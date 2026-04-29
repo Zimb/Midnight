@@ -16,8 +16,9 @@ Pré-requis :
    Sur CPU c'est possible mais très lent (~5 min/fichier).
 
 Usage :
-    python generate_dataset.py                      # 4 sorties × 10 prompts/quadrant
+    python generate_dataset.py                      # 4 sorties × 15 prompts/quadrant, 16 secondes
     python generate_dataset.py --n_per_prompt 2     # rapide, pour tester
+    python generate_dataset.py --duration 32        # clips de 32 secondes
     python generate_dataset.py --quadrants Q1 Q3    # seulement happy + sad
     python generate_dataset.py --cpu                # forcer CPU (debug)
 """
@@ -41,7 +42,10 @@ MODEL_ID         = "slseanwu/MIDI-LLM_Llama-3.2-1B"
 # Paramètres de génération recommandés par les auteurs
 DEFAULT_TEMPERATURE = 1.0
 DEFAULT_TOP_P       = 0.98
-DEFAULT_MAX_TOKENS  = 2046
+# Pour une mélodie solo de ~16s : 4 notes/sec × 16s × 3 tokens/note ≈ 192 tokens.
+# On prend 384 comme budget généreux (permet ~30s) ; le trim ramène à target.
+DEFAULT_MAX_TOKENS  = 384
+DEFAULT_DURATION_S  = 16.0  # durée cible après trim (secondes)
 
 SYSTEM_PROMPT = (
     "You are a world-class composer. "
@@ -162,7 +166,29 @@ def _has_excessive_notes(tokens: list[int], max_per_time: int = 64) -> bool:
     return bool(torch.any(counts > max_per_time).item())
 
 
-def save_midi(tokens: list[int], out_path: Path) -> bool:
+def trim_midi(path: Path, duration_sec: float) -> bool:
+    """Tronque un fichier MIDI à duration_sec secondes via symusic.
+    Retourne False si le fichier est vide après trim."""
+    try:
+        from symusic import Score
+        score = Score(str(path))
+        tpq   = score.ticks_per_quarter
+        qpm   = score.tempos[0].qpm if score.tempos else 120.0
+        # ticks/seconde = (qpm/60) × tpq
+        end_tick = int(duration_sec * (qpm / 60.0) * tpq)
+        clipped  = score.clip(0, end_tick)
+        # Vérifie qu'il reste des notes après trim
+        total_notes = sum(len(t.notes) for t in clipped.tracks)
+        if total_notes == 0:
+            return False
+        clipped.dump_midi(str(path))
+        return True
+    except Exception as e:
+        print(f"    [warn] Trim échoué ({e}) — fichier conservé sans trim")
+        return True  # on garde quand même le fichier non-trimé
+
+
+def save_midi(tokens: list[int], out_path: Path, duration_sec: float | None = None) -> bool:
     """Valide les tokens et sauvegarde en .mid. Retourne True si succès."""
     if len(tokens) < 3:
         return False
@@ -172,6 +198,10 @@ def save_midi(tokens: list[int], out_path: Path) -> bool:
         midi_obj = _tokens_to_midi(tokens)
         out_path.parent.mkdir(parents=True, exist_ok=True)
         midi_obj.save(str(out_path))
+        if duration_sec is not None:
+            if not trim_midi(out_path, duration_sec):
+                out_path.unlink(missing_ok=True)
+                return False
         return True
     except Exception as e:
         print(f"    [warn] Échec sauvegarde : {e}")
@@ -251,7 +281,10 @@ def main() -> int:
                         help="Quadrants à générer (défaut: Q1 Q2 Q3 Q4)")
     parser.add_argument("--temperature", type=float, default=DEFAULT_TEMPERATURE)
     parser.add_argument("--top_p",       type=float, default=DEFAULT_TOP_P)
-    parser.add_argument("--max_tokens",  type=int,   default=DEFAULT_MAX_TOKENS)
+    parser.add_argument("--max_tokens",  type=int,   default=DEFAULT_MAX_TOKENS,
+                        help=f"Tokens max à générer (défaut: {DEFAULT_MAX_TOKENS} ≈ 30s solo)")
+    parser.add_argument("--duration",    type=float, default=DEFAULT_DURATION_S,
+                        help=f"Durée cible en secondes après trim (défaut: {DEFAULT_DURATION_S})")
     parser.add_argument("--cpu",         action="store_true",
                         help="Forcer CPU (déconseillé sauf debug)")
     args = parser.parse_args()
@@ -291,7 +324,7 @@ def main() -> int:
             )
             for seq in seqs:
                 out_path = q_dir / f"gen_{file_idx:04d}.mid"
-                if save_midi(seq, out_path):
+                if save_midi(seq, out_path, duration_sec=args.duration):
                     print(f"    ✓ {out_path.name}")
                     index_rows.append({
                         "path": str(out_path),
