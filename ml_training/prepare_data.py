@@ -20,7 +20,8 @@ ROOT = Path(__file__).parent
 # Tous les fichiers index disponibles sont fusionnés automatiquement
 INDEX_CSVS = [
     ROOT / "data" / "vgmidi_index.csv",
-    ROOT / "data" / "emopia_index.csv",   # ajouté si download_emopia.py a tourné
+    ROOT / "data" / "emopia_index.csv",      # ajouté si download_emopia.py a tourné
+    ROOT / "data" / "classical_index.csv",   # ajouté si download_classical.py a tourné
 ]
 TOKENS_PT = ROOT / "data" / "tokens.pt"
 TOKENIZER_JSON = ROOT / "data" / "tokenizer.json"
