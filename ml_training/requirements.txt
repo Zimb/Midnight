@@ -1,0 +1,22 @@
+# PyTorch avec CUDA 12.1 — installer via :
+#   pip install torch --index-url https://download.pytorch.org/whl/cu121
+torch>=2.2.0
+
+# Tokenisation MIDI (REMI, MIDI-Like, etc.)
+miditok>=3.0.3
+
+# Manipulation MIDI bas niveau
+symusic>=0.4.0
+mido>=1.3.0
+
+# Utilitaires
+numpy>=1.24
+tqdm>=4.66
+pandas>=2.0
+
+# Export ONNX pour intégration VST3 C++
+onnx>=1.15
+onnxruntime>=1.17
+
+# Optionnel : suivi entraînement
+tensorboard>=2.15

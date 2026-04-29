@@ -1,0 +1,42 @@
+# Fichiers MIDI générés / datasets
+*.mid
+*.midi
+
+# Audio
+*.wav
+*.mp3
+*.flac
+*.ogg
+
+# Modèles PyTorch et données ML
+*.pt
+*.pth
+*.onnx
+
+# Dataset brut téléchargé
+ml_training/data/vgmidi_raw/
+ml_training/data/emopia_raw/
+
+# Cache dataset tokenisé (peut être regénéré avec prepare_data.py)
+ml_training/data/tokens.pt
+
+# Checkpoints (lourds, regénérables avec train.py)
+ml_training/checkpoints/
+
+# Environnement virtuel Python
+ml_training/.venv/
+.venv/
+
+# Caches Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# SoundFonts (lourdes, téléchargeables séparément)
+soundfonts/
+
+# Fichiers temporaires / OS
+.DS_Store
+Thumbs.db
+desktop.ini

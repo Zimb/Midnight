@@ -1,276 +1,180 @@
-# Generateur d'orchestre MIDI/WAV infini en temps reel
+# Plugin VST3 d'improvisation melodique avec ML
 
-## Objectif
+## Ce qui a ete construit
 
-Imaginer puis construire un systeme ou l'utilisateur dirige un orchestre generatif en temps reel, comme un chef d'orchestre. L'utilisateur ne compose pas chaque note a la main : il controle l'intention musicale, l'energie, les pupitres, les transitions et les moments forts.
+Un plugin VST3 developpe en C++ pour FL Studio. Il genere une phrase melodique
+en temps reel a partir d'une note posee dans le piano roll, sur la gamme detectee,
+avec la possibilite d'exporter le resultat en fichier MIDI.
 
-Le moteur genere en continu des evenements MIDI, les envoie a un synthetiseur comme FluidSynth, puis produit du son en direct. Le WAV n'est pas la source principale : c'est l'enregistrement optionnel de la performance.
-
-Pipeline cible :
+### Workflow utilisateur
 
 ```text
-Chef d'orchestre UI -> Moteur musical -> Scheduler MIDI live -> FluidSynth -> Audio live
-                                                                          -> WAV optionnel
-                                                                          -> MIDI log optionnel
+1. L'utilisateur pose une note (ex: Do4) dans le piano roll FL Studio
+2. Le plugin genere une phrase melodique sur la gamme correspondante
+3. L'utilisateur clique "Export MIDI"
+4. Il drag-and-drop le .mid dans le piano roll FL Studio
+5. Il edite ce qu'il veut garder
 ```
 
-## Etat actuel du projet
+### Ce qui fonctionne (moteur procédural actuel)
 
-Le dossier contient deja une base utile :
+- Detection de la note de base depuis le piano roll
+- Generation d'une phrase dans la gamme correspondante
+- Export MIDI du resultat
 
-- `midi.py` : genere un morceau orchestral lofi/anime/game de 3 minutes.
-- `heroic_adventure_theme.py` : genere un theme original aventure/fantasy avec orchestration.
-- `midi_editor.py` : editeur MIDI graphique type piano-roll avec lecture et export.
-- `render_with_soundfont.py` : convertit un MIDI en WAV via FluidSynth et une SoundFont.
-- `SOUND_QUALITY.md` : notes sur FluidSynth, SoundFonts et rendu audio.
-- `heroic_adventure_theme_original.mid` : dernier MIDI genere.
-- `heroic_adventure_theme_original_generaluser.wav` : rendu WAV avec GeneralUser GS.
+---
 
-SoundFont deja utilisee sur le poste actuel :
+## Prochaine etape : moteur ML conditionne par l'emotion
+
+L'objectif est de remplacer le moteur procedural par un **Transformer ML**
+qui genere des phrases plus naturelles, avec du phrasé, des respirations,
+des motifs developpes — et surtout conditionne par une **emotion choisie**.
+
+### Ce que le ML apporte vs le procédural actuel
+
+| Critere              | Procédural (actuel) | ML (en cours)             |
+|----------------------|---------------------|---------------------------|
+| Notes dans la gamme  | Oui                 | Oui                       |
+| Phrasé naturel       | Non                 | Oui                       |
+| Motifs développés    | Non                 | Oui                       |
+| Silences musicaux    | Non                 | Oui                       |
+| Feeling "joué"       | Non                 | Oui                       |
+| Controle émotionnel  | Non                 | Oui (knob 4 humeurs)      |
+
+### Conditioning émotion (knob dans le VST)
+
+| Bouton    | Quadrant | Valence | Arousal | Style                     |
+|-----------|----------|---------|---------|---------------------------|
+| Happy     | Q1       | +       | +       | Majeur vif, sauts joyeux  |
+| Tense     | Q2       | -       | +       | Mineur intense, dissonances|
+| Sad       | Q3       | -       | -       | Mineur lent, descendants  |
+| Peaceful  | Q4       | +       | -       | Majeur calme, conjoint    |
+
+---
+
+## Pipeline ML (dossier ml_training/)
+
+### Fichiers
+
+```text
+ml_training/
+├── download_vgmidi.py   — télécharge VGMIDI (tarball, filtre NTFS Windows)
+├── prepare_data.py      — tokenisation REMI via miditok -> tokens.pt
+├── dataset.py           — Dataset PyTorch avec label émotion
+├── model.py             — Transformer GPT ~2M params conditionné émotion
+├── train.py             — boucle entraînement AMP fp16 + cosine LR + checkpoints
+├── generate.py          — génération top-k/temperature -> .mid
+├── export_onnx.py       — export ONNX pour ONNX Runtime C++ dans le VST
+└── requirements.txt     — dépendances Python
+```
+
+### Dataset utilisé
+
+**VGMIDI** — musiques de jeux vidéo annotées valence/arousal (~200 morceaux labellisés).
+Téléchargé via tarball GitHub (pas git clone : le repo contient des noms de fichiers
+invalides sur NTFS Windows dans le dossier unlabelled/).
+
+Seul le dossier `labelled/` est extrait. Le dossier `unlabelled/` est ignoré
+(noms avec guillemets `"` illégaux sur Windows, et pas d'annotations émotion utiles).
+
+Dataset suivant prévu : **EMOPIA** (~1 100 clips pop piano, même schéma Q1-Q4).
+
+### Architecture du modèle
+
+Petit Transformer décodeur (GPT-like) :
+- 4 layers, 4 heads, d_model=192, ~2M paramètres
+- Token embedding + position embedding + emotion embedding (ajouté à chaque position)
+- Flash attention causale (PyTorch >= 2.0)
+- Weight tying embedding/tête de sortie
+- Tokenisation REMI (miditok) : vocab ~500 tokens
+
+### Commandes
+
+```powershell
+cd ml_training
+.venv\Scripts\Activate.ps1
+
+# 1. Télécharger VGMIDI (tarball filtré)
+python download_vgmidi.py
+
+# 2. Tokeniser le dataset
+python prepare_data.py
+
+# 3. Entraîner (~1h35 sur Ryzen 5 5650G, ~20-40 min sur RTX 3060)
+python train.py
+
+# 4. Tester la génération
+python generate.py --emotion happy --seed_midi ..\ghibli_proper.mid --out test_happy.mid
+python generate.py --emotion sad      --out test_sad.mid
+python generate.py --emotion epic     --out test_epic.mid
+python generate.py --emotion peaceful --out test_peaceful.mid
+
+# 5. Exporter pour le VST C++
+python export_onnx.py
+```
+
+### Résultats d'entraînement (repères)
+
+- ~140 secondes par epoch sur Ryzen 5 PRO 5650G (CPU)
+- 40 epochs -> ~1h35 sur CPU
+- `best.pt` sauvegardé automatiquement à la meilleure val_loss
+- val_loss cible : < 2.0 pour une qualité musicale correcte
+
+---
+
+## Intégration du modèle dans le VST C++
+
+### Ce qui sera ajouté
+
+```cpp
+// Au clic Generate / Export — pas de contrainte temps réel
+auto tokens  = onnxModel.generate(seedTokens, emotionId, numTokens);
+auto midi    = tokenizer.decode(tokens);
+exportMidiFile(midi, outputPath);
+```
+
+### Dépendances C++ à ajouter
+
+- **ONNX Runtime C++** (lib statique) — charge `emotion_gpt.onnx`
+- Tokenisation REMI en C++ (port du comportement de miditok)
+- Sampling top-k + température (quelques dizaines de lignes)
+
+### Fichier produit
+
+```text
+ml_training/checkpoints/emotion_gpt.onnx   (~8 MB)
+```
+
+Entrées :  `input_ids [batch, seq]` (int64) + `emotion [batch]` (int64)
+Sortie :   `logits [batch, seq, vocab]` (float32)
+
+---
+
+## Etat des fichiers Python existants (contexte initial)
+
+Ces fichiers etaient presents avant le VST3 et restent utiles pour la generation
+rapide de MIDI de reference ou de test :
+
+- `midi.py` : genere un morceau orchestral lofi/anime/game de 3 minutes
+- `heroic_adventure_theme.py` : theme aventure/fantasy orchestral procedural
+- `midi_editor.py` : editeur MIDI graphique type piano-roll
+- `render_with_soundfont.py` : convertit un MIDI en WAV via FluidSynth
+
+SoundFont disponible :
 
 ```text
 soundfonts/GeneralUser_GS_1.472/GeneralUser GS 1.472/GeneralUser GS v1.472.sf2
 ```
 
-FluidSynth detecte sur le poste actuel :
-
-```text
-C:\ProgramData\chocolatey\bin\fluidsynth.EXE
-```
-
-Sur un autre poste, ces chemins peuvent changer. Il faudra soit copier le dossier `soundfonts`, soit telecharger une SoundFont compatible GM/GS.
-
-## Idee musicale
-
-Le systeme doit se comporter comme un orchestre vivant :
-
-- Cordes : nappes, tremolos, ostinatos, soutien harmonique.
-- Bois : flute, clarinette, hautbois pour melodies et reponses.
-- Cuivres : cor, trombone, trompette pour appels heroiques et tutti.
-- Harpe : arpeges, transitions, texture magique.
-- Basse : fondation harmonique.
-- Percussions : energie, accents, transitions.
-- Choeur : renfort pour les moments larges.
-
-Le theme ne doit pas rester toujours sur le meme instrument. Il doit passer d'un pupitre a l'autre : cor -> flute -> clarinette -> cordes -> hautbois -> trombone -> tutti.
-
-## Controle utilisateur
-
-L'utilisateur agit comme chef d'orchestre avec des controles simples :
-
-- Play / Stop
-- Tempo
-- Energie
-- Tension
-- Densite
-- Volume par pupitre
-- Pupitres actifs : cordes, bois, cuivres, harpe, basse, percussions, choeur
-- Sections : intro, theme, variation, pont, final, calme
-- Actions : tutti, solo, transition, crescendo, decrescendo, break
-
-Exemples d'intentions :
-
-```text
-Plus doux -> moins de percussions, plus de harpe et clarinette.
-Plus heroique -> cors + trombones + cordes larges.
-Solo flute -> la melodie passe a la flute pendant quelques mesures.
-Final -> le moteur prepare une montee sur 8 mesures.
-Calme -> basse simple, cordes tenues, bois leger.
-```
-
-## Architecture proposee
-
-### 1. Moteur musical
-
-Responsabilites :
-
-- Choisir la progression d'accords.
-- Generer basse, harmonie, arpges, melodies, contrechants et percussions.
-- Garder une memoire musicale pour eviter une boucle trop repetee.
-- Produire des blocs courts : 1, 2 ou 4 mesures.
-
-### 2. Etat de direction
-
-Objet central qui contient les choix du chef :
-
-```python
-ConductorState(
-    tempo=108,
-    energy=0.65,
-    tension=0.35,
-    density=0.55,
-    section="theme_a",
-    focus="woodwinds",
-    active_parts={"strings", "harp", "bass", "flute", "horn"},
-)
-```
-
-### 3. Scheduler MIDI temps reel
-
-Responsabilites :
-
-- Planifier les notes avec un peu d'avance.
-- Garder un timing stable.
-- Envoyer `note_on`, `note_off`, program changes et controles MIDI.
-- Eviter les coupures quand l'utilisateur change de section.
-
-Principe recommande : generer 1 ou 2 mesures d'avance, mais appliquer les changements utilisateur au prochain point musical propre.
-
-### 4. Synthese audio
-
-Options possibles :
-
-- `pyfluidsynth` pour piloter FluidSynth directement depuis Python.
-- `mido` + port MIDI virtuel + FluidSynth en process externe.
-- FluidSynth en mode serveur si besoin.
-
-Pour un MVP, le plus simple est : Python genere les evenements -> FluidSynth joue avec la SoundFont.
-
-### 5. Enregistrement
-
-Deux sorties utiles :
-
-- MIDI log : enregistrer tout ce qui a ete joue en `.mid`.
-- WAV live : enregistrer l'audio produit.
-
-Pour une session infinie, eviter un WAV unique sans limite. Preferer des segments :
-
-```text
-session_001.wav
-session_002.wav
-session_003.wav
-```
-
-## Dependances Python envisagees
-
-Dependances actuelles du projet :
-
-```text
-midiutil
-mido
-midi2audio
-pyFluidSynth
-```
-
-Dependances utiles pour le temps reel :
-
-```text
-mido
-python-rtmidi
-pyfluidsynth
-sounddevice
-numpy
-```
-
-Installer :
-
-```powershell
-pip install mido python-rtmidi pyfluidsynth sounddevice numpy
-```
-
-FluidSynth doit aussi etre installe sur la machine :
-
-```powershell
-choco install fluidsynth
-```
-
-Ou installer FluidSynth autrement, puis verifier :
-
-```powershell
-fluidsynth --version
-```
-
-## MVP recommande
-
-Creer un nouveau fichier :
-
-```text
-live_orchestra_conductor.py
-```
-
-Fonctionnalites du MVP :
-
-1. Interface Tkinter simple.
-2. Bouton Play / Stop.
-3. Sliders : tempo, energie, tension, densite.
-4. Boutons : intro, theme, variation, calme, final.
-5. Generation infinie par blocs de 4 mesures.
-6. Rotation automatique des instruments melodiques.
-7. Lecture live via FluidSynth.
-8. Sauvegarde optionnelle de ce qui a ete joue en MIDI.
-9. Rendu/export WAV de la performance ou des segments.
-
-## Structure possible du code
-
-```text
-live_orchestra_conductor.py
-├── ConductorState
-├── LiveOrchestraEngine
-├── HarmonyGenerator
-├── MelodyGenerator
-├── Orchestrator
-├── MidiScheduler
-├── FluidSynthPlayer
-├── SessionRecorder
-└── ConductorApp
-```
-
-## Pseudo-flux temps reel
-
-```python
-while playing:
-    if scheduler.needs_more_music():
-        state = ui.current_state()
-        bars = engine.generate_next_bars(state, count=4)
-        scheduler.queue(bars)
-
-    scheduler.send_due_events()
-    ui.update_meters()
-```
-
-## Points techniques a surveiller
-
-- Latence : garder un buffer musical mais pas trop grand.
-- Timing : utiliser une horloge monotone, pas `time.time()`.
-- Transitions : appliquer les gros changements au debut d'une mesure.
-- Notes bloquees : toujours envoyer `all notes off` au stop.
-- Ranges instrumentales : eviter flute trop grave, trombone trop aigu, etc.
-- Densite : plus de notes ne veut pas toujours dire meilleure musique.
-- Export WAV : segmenter les longues sessions.
-
-## Etapes suivantes concretes
-
-1. Verifier que FluidSynth fonctionne sur le nouveau poste.
-2. Copier ou reinstaller la SoundFont GeneralUser GS.
-3. Installer les dependances Python temps reel.
-4. Creer `live_orchestra_conductor.py` avec une premiere boucle infinie simple.
-5. Commencer avec 3 pupitres : harp, strings, horn.
-6. Ajouter ensuite flute, clarinet, oboe, trombone, percussion.
-7. Ajouter l'enregistrement MIDI de la session.
-8. Ajouter le rendu ou l'enregistrement WAV.
-
-## Commandes utiles existantes
-
-Regenerer le theme aventure actuel :
-
-```powershell
-python heroic_adventure_theme.py
-```
-
-Rendre en WAV avec GeneralUser GS :
-
-```powershell
-python render_with_soundfont.py --midi heroic_adventure_theme_original.mid --soundfont "soundfonts\GeneralUser_GS_1.472\GeneralUser GS 1.472\GeneralUser GS v1.472.sf2" --output heroic_adventure_theme_original_generaluser.wav
-```
-
-Verifier la compilation Python :
-
-```powershell
-python -m py_compile heroic_adventure_theme.py midi_editor.py render_with_soundfont.py
-```
-
-## Conclusion
-
-Le projet est techniquement faisable. La bonne approche n'est pas de creer un MIDI infini puis un WAV infini, mais de faire jouer un orchestre MIDI vivant en direct. Le WAV devient l'enregistrement de la performance.
-
-La prochaine grande etape est un prototype `live_orchestra_conductor.py` : un chef d'orchestre interactif qui genere quelques mesures d'avance, les joue via FluidSynth, et reagit aux controles utilisateur au debut des prochaines mesures.
+---
+
+## Prochaines etapes
+
+1. Finir l'entraînement sur VGMIDI (en cours)
+2. Ecouter les 4 MIDI generes (happy/tense/sad/peaceful), evaluer la qualite
+3. Si qualite insuffisante -> ajouter EMOPIA (~8h d'entrainement sur CPU nuit)
+4. Exporter `emotion_gpt.onnx`
+5. Integrer ONNX Runtime dans le VST C++ (bouton Generate existant)
+6. Brancher le knob émotion sur l'emotion_id passe au modele
+7. Optionnel V2 : XY pad valence/arousal continus au lieu de 4 boutons discrets
+8. Optionnel V3 : pré-entraîner sur MetaMIDI/Lakh -> fine-tune émotion
