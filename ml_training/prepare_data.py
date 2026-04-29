@@ -17,7 +17,11 @@ from symusic import Score
 from tqdm import tqdm
 
 ROOT = Path(__file__).parent
-INDEX_CSV = ROOT / "data" / "vgmidi_index.csv"
+# Tous les fichiers index disponibles sont fusionnés automatiquement
+INDEX_CSVS = [
+    ROOT / "data" / "vgmidi_index.csv",
+    ROOT / "data" / "emopia_index.csv",   # ajouté si download_emopia.py a tourné
+]
 TOKENS_PT = ROOT / "data" / "tokens.pt"
 TOKENIZER_JSON = ROOT / "data" / "tokenizer.json"
 
@@ -45,17 +49,22 @@ def build_tokenizer() -> REMI:
 
 
 def main() -> int:
-    if not INDEX_CSV.exists():
-        print(f"[error] {INDEX_CSV} introuvable. Lance d'abord download_vgmidi.py", file=sys.stderr)
+    available = [p for p in INDEX_CSVS if p.exists()]
+    if not available:
+        print(f"[error] Aucun index trouvé. Lance download_vgmidi.py et/ou download_emopia.py d'abord.", file=sys.stderr)
         return 1
+
+    # Fusion de tous les index disponibles
+    rows: list[dict] = []
+    for csv_path in available:
+        with csv_path.open("r", encoding="utf-8") as f:
+            rows.extend(csv.DictReader(f))
+        print(f"[index] {csv_path.name} chargé ({len(rows)} entrées cumulées)")
 
     tokenizer = build_tokenizer()
     sequences: list[torch.Tensor] = []
     emotions: list[int] = []
     skipped = 0
-
-    with INDEX_CSV.open("r", encoding="utf-8") as f:
-        rows = list(csv.DictReader(f))
 
     for row in tqdm(rows, desc="Tokenizing"):
         path = Path(row["path"])
