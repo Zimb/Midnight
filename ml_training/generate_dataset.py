@@ -2,8 +2,11 @@
 Génère un dataset MIDI labélisé par émotion en utilisant MIDI-LLM
 (slseanwu/MIDI-LLM_Llama-3.2-1B) comme oracle.
 
-Le modèle MIDI-LLM reçoit des prompts textuels décriant une émotion →
-les fichiers générés héritent du label émotion de leur prompt.
+Le modèle reçoit des prompts textuels combinant émotion + instrument + style →
+les fichiers héritent du label émotion de leur prompt.
+
+Système combinatoire : 8 humeurs × 25 instruments × 20 styles × 7 détails
+= 28 000 combinaisons uniques par quadrant.
 
 Résultat :
     data/midillm_raw/Q1/  ... data/midillm_raw/Q4/   (fichiers .mid)
@@ -12,20 +15,25 @@ Résultat :
 Pré-requis :
     pip install transformers anticipation
 
-⚠ GPU FORTEMENT RECOMMANDÉ (RTX 3060 6 GB suffit).
-   Sur CPU c'est possible mais très lent (~5 min/fichier).
+⚠ GPU FORTEMENT RECOMMANDÉ (RTX 3060 6 GB suffit, ~20s/prompt).
+   Sur CPU c'est possible mais très lent (~5 min/prompt).
+
+Timing estimé (RTX 3060, n_per_prompt=4, max_tokens=384) :
+    ~20s/prompt → 10h = 1 800 prompts → 450 par quadrant → 1 800 fichiers MIDI
 
 Usage :
-    python generate_dataset.py                      # 4 sorties × 15 prompts/quadrant, 16 secondes
-    python generate_dataset.py --n_per_prompt 2     # rapide, pour tester
-    python generate_dataset.py --duration 32        # clips de 32 secondes
-    python generate_dataset.py --quadrants Q1 Q3    # seulement happy + sad
-    python generate_dataset.py --cpu                # forcer CPU (debug)
+    python generate_dataset.py                   # nuit complète (450 prompts/quadrant)
+    python generate_dataset.py --max_prompts 5   # test rapide (5 prompts/quadrant)
+    python generate_dataset.py --duration 8      # clips de 8s au lieu de 16s
+    python generate_dataset.py --quadrants Q1 Q3 # seulement happy + sad
+    python generate_dataset.py --cpu             # forcer CPU (debug)
 """
 from __future__ import annotations
 
 import argparse
 import csv
+import itertools
+import random
 import sys
 from pathlib import Path
 
@@ -45,12 +53,122 @@ DEFAULT_TOP_P       = 0.98
 # Pour une mélodie solo de ~16s : 4 notes/sec × 16s × 3 tokens/note ≈ 192 tokens.
 # On prend 384 comme budget généreux (permet ~30s) ; le trim ramène à target.
 DEFAULT_MAX_TOKENS  = 384
-DEFAULT_DURATION_S  = 16.0  # durée cible après trim (secondes)
+DEFAULT_DURATION_S  = 16.0   # durée cible après trim (secondes)
+DEFAULT_MAX_PROMPTS = 450    # prompts par quadrant pour ~10h sur RTX 3060
 
 SYSTEM_PROMPT = (
     "You are a world-class composer. "
     "Please compose some music according to the following description: "
 )
+
+# ---------------------------------------------------------------------------
+# Vocabulaire combinatoire
+# ---------------------------------------------------------------------------
+
+INSTRUMENTS = [
+    "piano", "violin", "cello", "flute", "clarinet", "oboe",
+    "trumpet", "French horn", "trombone", "acoustic guitar", "harp",
+    "marimba", "vibraphone", "xylophone", "accordion", "harmonica",
+    "banjo", "mandolin", "sitar", "erhu", "nylon-string guitar",
+    "bass clarinet", "piccolo", "dulcimer", "music box",
+]
+
+STYLES = [
+    "classical", "jazz", "folk", "baroque", "romantic",
+    "minimalist", "blues", "Celtic", "bossa nova", "waltz",
+    "tango", "film score", "ambient", "impressionist", "lullaby",
+    "medieval", "ragtime", "flamenco", "Klezmer", "gospel",
+]
+
+# Descripteurs et détails spécifiques par quadrant
+QUADRANT_VOCAB: dict[str, dict] = {
+    "Q1": {  # Valence+ Arousal+  → joyeux / énergique
+        "moods": [
+            "joyful", "cheerful", "playful", "upbeat",
+            "festive", "exuberant", "bright", "lighthearted",
+        ],
+        "details": [
+            "in a major key, fast and bouncy",
+            "with a lively, dancing rhythm",
+            "full of energy and optimism",
+            "evoking celebration and happiness",
+            "carefree and full of life",
+            "with bright melodic leaps and runs",
+            "triumphant and joyous in character",
+        ],
+    },
+    "Q2": {  # Valence- Arousal+  → tendu / épique / dramatique
+        "moods": [
+            "tense", "dramatic", "menacing", "fierce",
+            "anxious", "dark", "ominous", "urgent",
+        ],
+        "details": [
+            "in a minor key with dissonant intervals",
+            "with sharp staccato rhythms and aggressive phrasing",
+            "building relentlessly toward a crisis point",
+            "evoking danger and conflict",
+            "full of nervous energy and dread",
+            "with turbulent runs and sudden dynamic shifts",
+            "foreboding and relentless in character",
+        ],
+    },
+    "Q3": {  # Valence- Arousal-  → triste / mélancolique
+        "moods": [
+            "melancholic", "sorrowful", "mournful", "sad",
+            "lamenting", "wistful", "grieving", "desolate",
+        ],
+        "details": [
+            "in a minor key, slow and sparse",
+            "with long sustained notes full of grief",
+            "expressing deep longing and loss",
+            "quiet and introspective, heavy with sorrow",
+            "like a gentle lament or elegy",
+            "with a slow, aching melody and empty silences",
+            "conveying quiet despair and regret",
+        ],
+    },
+    "Q4": {  # Valence+ Arousal-  → paisible / calme
+        "moods": [
+            "peaceful", "serene", "tranquil", "calm",
+            "meditative", "hushed", "gentle", "soothing",
+        ],
+        "details": [
+            "in a major key, slow and flowing",
+            "with soft, unhurried phrases",
+            "evoking stillness and inner peace",
+            "like a gentle lullaby or morning meditation",
+            "dreamy and quietly joyful",
+            "with smooth legato lines and no urgency",
+            "evoking a calm landscape at dusk",
+        ],
+    },
+}
+
+# Mapping quadrant → (valence, arousal)
+QUADRANT_META = {
+    "Q1": ( 1.0,  1.0),
+    "Q2": (-1.0,  1.0),
+    "Q3": (-1.0, -1.0),
+    "Q4": ( 1.0, -1.0),
+}
+
+
+def build_prompts(quadrant: str, max_count: int, seed: int = 42) -> list[str]:
+    """
+    Génère max_count prompts uniques pour un quadrant par combinaison de
+    (humeur × instrument × style × détail). Ordre déterministe via seed.
+    """
+    vocab = QUADRANT_VOCAB[quadrant]
+    combos = list(itertools.product(
+        vocab["moods"], INSTRUMENTS, STYLES, vocab["details"]
+    ))
+    rng = random.Random(seed)
+    rng.shuffle(combos)
+    combos = combos[:max_count]
+    return [
+        f"A {mood} {style} solo {instrument} melody, {detail}"
+        for mood, instrument, style, detail in combos
+    ]
 
 # ---------------------------------------------------------------------------
 # Prompts par quadrant émotion
@@ -126,15 +244,7 @@ EMOTION_PROMPTS: dict[str, list[str]] = {
         "A serene solo electric piano tune, soft chords dissolving into silence",
         "A quiet solo oboe melody, tender and still, evoking autumn light",
     ],
-}
-
-# Mapping quadrant → (valence, arousal)
-QUADRANT_META = {
-    "Q1": ( 1.0,  1.0),
-    "Q2": (-1.0,  1.0),
-    "Q3": (-1.0, -1.0),
-    "Q4": ( 1.0, -1.0),
-}
+}  # _CURATED — non utilisé en production mais garde comme référence de qualité
 
 ROOT      = Path(__file__).parent
 RAW_DIR   = ROOT / "data" / "midillm_raw"
@@ -273,11 +383,23 @@ def generate_for_prompt(
 # ---------------------------------------------------------------------------
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Génère un dataset MIDI avec MIDI-LLM")
+    parser = argparse.ArgumentParser(
+        description="Génère un dataset MIDI labelisé avec MIDI-LLM (combinaisons émotion × instrument × style)",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=f"""
+Estimation (RTX 3060, n_per_prompt=4, max_tokens=384) :
+  ~20s/prompt × 450 prompts/quadrant × 4 quadrants = ~10h
+Combinaisons disponibles : {len(INSTRUMENTS)} instruments × {len(STYLES)} styles × 8 humeurs × 7 détails = 28 000/quadrant
+        """,
+    )
     parser.add_argument("--n_per_prompt", type=int, default=4,
                         help="Fichiers générés par prompt (défaut: 4)")
-    parser.add_argument("--quadrants", nargs="+", default=list(EMOTION_PROMPTS.keys()),
-                        choices=list(EMOTION_PROMPTS.keys()),
+    parser.add_argument("--max_prompts", type=int, default=DEFAULT_MAX_PROMPTS,
+                        help=f"Prompts max par quadrant (défaut: {DEFAULT_MAX_PROMPTS} pour ~10h)")
+    parser.add_argument("--seed", type=int, default=42,
+                        help="Graine aléatoire pour la sélection des combinaisons")
+    parser.add_argument("--quadrants", nargs="+", default=list(QUADRANT_META.keys()),
+                        choices=list(QUADRANT_META.keys()),
                         help="Quadrants à générer (défaut: Q1 Q2 Q3 Q4)")
     parser.add_argument("--temperature", type=float, default=DEFAULT_TEMPERATURE)
     parser.add_argument("--top_p",       type=float, default=DEFAULT_TOP_P)
@@ -294,6 +416,12 @@ def main() -> int:
         print("[warn] GPU non disponible — la génération sera très lente sur CPU.")
         print("       Lance ce script sur la machine avec RTX 3060.")
 
+    # Estimation de durée
+    est_h = args.max_prompts * len(args.quadrants) * 20 / 3600
+    total_files = args.max_prompts * len(args.quadrants) * args.n_per_prompt
+    print(f"[plan] {args.max_prompts} prompts × {len(args.quadrants)} quadrants × {args.n_per_prompt} sorties")
+    print(f"[plan] ≈ {total_files} fichiers MIDI × {args.duration}s | durée estimée : {est_h:.1f}h")
+
     model, tokenizer = load_model(device)
 
     # Compteurs globaux
@@ -302,18 +430,24 @@ def main() -> int:
     index_rows: list[dict] = []
 
     for quadrant in args.quadrants:
-        prompts = EMOTION_PROMPTS[quadrant]
         valence, arousal = QUADRANT_META[quadrant]
         q_dir = RAW_DIR / quadrant
         q_dir.mkdir(parents=True, exist_ok=True)
 
-        # Compte les fichiers déjà générés pour numéroter correctement
-        existing = list(q_dir.glob("*.mid"))
+        # Reprise automatique : compte les fichiers déjà produits
+        existing = sorted(q_dir.glob("*.mid"))
         file_idx = len(existing)
+        # Ajoute les fichiers existants à l'index (au cas où on reprend)
+        for ep in existing:
+            index_rows.append({"path": str(ep), "valence": valence,
+                                "arousal": arousal, "quadrant": quadrant})
+        prompts_done = file_idx // max(args.n_per_prompt, 1)  # prompts déjà traités
 
-        print(f"\n[{quadrant}] {len(prompts)} prompts × {args.n_per_prompt} sorties")
-        for p_idx, prompt in enumerate(prompts):
-            print(f"  [{p_idx+1}/{len(prompts)}] {prompt[:70]}…")
+        prompts = build_prompts(quadrant, args.max_prompts, seed=args.seed)
+        remaining = prompts[prompts_done:]
+        print(f"\n[{quadrant}] {len(prompts)} prompts planifiés — {prompts_done} déjà faits, {len(remaining)} restants")
+        for p_idx, prompt in enumerate(remaining):
+            print(f"  [{prompts_done+p_idx+1}/{len(prompts)}] {prompt[:80]}")
             seqs = generate_for_prompt(
                 model, tokenizer, prompt,
                 n_outputs=args.n_per_prompt,
