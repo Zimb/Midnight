@@ -22,4 +22,4 @@ onnxruntime>=1.17
 tensorboard>=2.15
 
 # HuggingFace datasets (streaming MIDI depuis HF Hub)
-datasets>=2.18
+anticipation
