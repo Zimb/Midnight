@@ -1,0 +1,205 @@
+path,valence,arousal,quadrant
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Banjo-Kazooie_N64_Banjo-Kazooie_Boggys Igloo Happy.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Banjo-Kazooie_N64_Banjo-Kazooie_Boggys Igloo Sad.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Banjo-Kazooie_N64_Banjo-Kazooie_Bubblegloop Swamp.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Banjo-Kazooie_N64_Banjo-Kazooie_Click Clock Wood.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Banjo-Kazooie_N64_Banjo-Kazooie_Ending.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Banjo-Kazooie_N64_Banjo-Kazooie_Freezeezy Peak.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Banjo-Kazooie_N64_Banjo-Kazooie_Gobis Valley.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Banjo-Kazooie_N64_Banjo-Kazooie_Mad Monster Mansion.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Banjo-Kazooie_N64_Banjo-Kazooie_Motzhand.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Banjo-Kazooie_N64_Banjo-Kazooie_Mumbos Mountain.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Banjo-Kazooie_N64_Banjo-Kazooie_Rusty Bucket Bay Aquatic.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Banjo-Kazooie_N64_Banjo-Tooie_Cauldron Keep.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Banjo-Kazooie_N64_Banjo-Tooie_Chilly Willy Chilli Billi.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Banjo-Kazooie_N64_Banjo-Tooie_End Credits.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Banjo-Kazooie_N64_Banjo-Tooie_Here Comes Trouble.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Banjo-Kazooie_N64_Banjo-Tooie_Isle O Hags Cauldron Keep.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Banjo-Kazooie_N64_Banjo-Tooie_Isle O Hags.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Banjo-Kazooie_N64_Banjo-Tooie_Spiral Mountain.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Banjo-Kazooie_N64_Banjo-Tooie_Terry.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Banjo-Kazooie_N64_Banjo-Tooie_Witchy World.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Battle of Olympus_NES_Battle of Olympus_3 Magic Hearts.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Battle of Olympus_NES_Battle of Olympus_A Brave Warrior.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Battle of Olympus_NES_Battle of Olympus_A Prayer to Zeus.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Battle of Olympus_NES_Battle of Olympus_Athene Sonata.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Battle of Olympus_NES_Battle of Olympus_Olympus No Tatakai.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Battle of Olympus_NES_Battle of Olympus_Orpheus Journey Arranged.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Battle of Olympus_NES_Battle of Olympus_The Story of a Lost Love.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Chrono_SNES_Chrono Trigger_600 AD.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Chrono_SNES_Chrono Trigger_Chrono Trigger.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Chrono_SNES_Chrono Trigger_Corridors of Time.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Chrono_SNES_Chrono Trigger_Maguss Theme.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Chrono_SNES_Chrono Trigger_Millenial Fair.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Chrono_SNES_Chrono Trigger_Ocean Palace.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Chrono_SNES_Chrono Trigger_Secret of the Forest.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Chrono_SNES_Chrono Trigger_Silent Light.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Chrono_SNES_Chrono Trigger_Wings That Cross Time.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Donkey Kong_SNES_Donkey Kong Country 2 Diddy's Kong Quest_Bayou Boogie.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Donkey Kong_SNES_Donkey Kong Country 2 Diddy's Kong Quest_Hot Head Bop.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Donkey Kong_SNES_Donkey Kong Country 2 Diddy's Kong Quest_Jib Jig.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Donkey Kong_SNES_Donkey Kong Country 2 Diddy's Kong Quest_Snakey Chantey.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Dragon Quest_NES_Dragon Quest_Battle Theme.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Dragon Quest_NES_Dragon Quest_Castle Theme.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Dragon Quest_NES_Dragon Quest_Cave Theme.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Dragon Quest_NES_Dragon Quest_Final Battle.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Dragon Quest_NES_Dragon Quest_Overworld Theme.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Dragon Quest_NES_Dragon Quest_Title Screen.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Dragon Quest_NES_Dragon Quest_Town Theme.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Final Fantasy_PS1_Final Fantasy VII_A High Wind Takes to the Skies.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Final Fantasy_PS1_Final Fantasy VII_Aeriths Theme.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Final Fantasy_PS1_Final Fantasy VII_Ahead On Our Way Remix.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Final Fantasy_PS1_Final Fantasy VII_Anxious Heart.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Final Fantasy_PS1_Final Fantasy VII_Battle Theme.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Final Fantasy_PS1_Final Fantasy VII_Cait Siths Theme.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Final Fantasy_PS1_Final Fantasy VII_Chasing The Black Caped Man.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Final Fantasy_PS1_Final Fantasy VII_Cids Theme.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Final Fantasy_PS1_Final Fantasy VII_Cinco de Chocobo.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Final Fantasy_PS1_Final Fantasy VII_Continue.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Final Fantasy_PS1_Final Fantasy VII_Cosmo Canyon.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Final Fantasy_PS1_Final Fantasy VII_Costa Del Sol.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Final Fantasy_PS1_Final Fantasy VII_Descendent of Shinobi.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Final Fantasy_PS1_Final Fantasy VII_Electric de Chocobo.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Final Fantasy_PS1_Final Fantasy VII_Fortress of the Condor.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Final Fantasy_PS1_Final Fantasy VII_Gold Saucer.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Final Fantasy_PS1_Final Fantasy VII_Great Warrior.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Final Fantasy_PS1_Final Fantasy VII_Holding My Thoughts in My Heart.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Final Fantasy_PS1_Final Fantasy VII_Its Difficult To Stand On Both Feet Isnt It.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Final Fantasy_PS1_Final Fantasy VII_Jenova Absolute.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Final Fantasy_PS1_Final Fantasy VII_JENOVA.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Final Fantasy_PS1_Final Fantasy VII_Judgement Day.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Final Fantasy_PS1_Final Fantasy VII_Life Stream.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Final Fantasy_PS1_Final Fantasy VII_Lurking In The Darkness.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Final Fantasy_PS1_Final Fantasy VII_Main Theme.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Final Fantasy_PS1_Final Fantasy VII_Mark of the Traitor.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Final Fantasy_PS1_Final Fantasy VII_Mining Town.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Final Fantasy_PS1_Final Fantasy VII_On That Day 5 Years Ago.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Final Fantasy_PS1_Final Fantasy VII_One Winged Angel Reborn Arrangement.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Final Fantasy_PS1_Final Fantasy VII_One Winged Angel.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Final Fantasy_PS1_Final Fantasy VII_Oppressed People.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Final Fantasy_PS1_Final Fantasy VII_Overworld.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Final Fantasy_PS1_Final Fantasy VII_Rufuss Welcoming Ceremony.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Final Fantasy_PS1_Final Fantasy VII_Sandy Badlands.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Final Fantasy_PS1_Final Fantasy VII_The Nightmare Begins.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Final Fantasy_PS1_Final Fantasy VII_Those Chosen By the Planet.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Final Fantasy_PS1_Final Fantasy VII_Tifa.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Final Fantasy_PS1_Final Fantasy VII_Trail of Blood.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Final Fantasy_PS1_Final Fantasy VII_Vincents Theme.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Final Fantasy_PS1_Final Fantasy VII_Waltz de Chocobo.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Final Fantasy_PS1_Final Fantasy VII_Weapon Raid.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Final Fantasy_PS1_Final Fantasy VII_Who Are You.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Indiana Jones_PC_Indiana Jones and the Fate of Atlantis_Crossing.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Indiana Jones_PC_Indiana Jones and the Last Crusade_The Holy Grail.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Indiana Jones_PC_Indiana Jones and the Last Crusade_Venice.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Indiana Jones_PC_Indiana Jones and the Last Crusade_Zeppelin.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Mana_SNES_Secret of Mana_A Wish.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Mana_SNES_Secret of Mana_Close Your Eye lids.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Mana_SNES_Secret of Mana_Danger.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Mana_SNES_Secret of Mana_Kind Memories.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Mana_SNES_Secret of Mana_Meridian Dance.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Mana_SNES_Secret of Mana_Rose and Ghost.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Mana_SNES_Secret of Mana_Spirit of the Night.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Mana_SNES_Secret of Mana_Tell A Strange Tale.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Mana_SNES_Secret of Mana_The Holy Intruder.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Other_N64_GoldenEye 007_Caverns.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Other_N64_GoldenEye 007_Dam.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Other_N64_GoldenEye 007_Facility X.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Other_N64_GoldenEye 007_Finish the job James If you can.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Other_N64_GoldenEye 007_Frigate.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Other_N64_GoldenEye 007_Runway X.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Other_N64_GoldenEye 007_Runway.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Other_N64_GoldenEye 007_Statue.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Other_NES_Ghosts 'n Goblins_Main Theme.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Other_NES_Tetris_Enter Your Name.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Other_NES_Tetris_Music A.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Other_PC_Age of Empires II The Age of Kings_Menu.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Other_PC_Age of Empires_Title Theme.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Other_PC_Aion Tower of Eternity_Death Waltz.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Other_PC_Aion Tower of Eternity_Fairy of the Peace.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Other_PC_Aion Tower of Eternity_Forgotten Sorrow.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Other_PC_Aion Tower of Eternity_Main Theme.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Other_PC_Aion Tower of Eternity_Song of Moonlight.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Other_PC_Aion Tower of Eternity_The Still Sad World.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Other_PC_Aion Tower of Eternity_Wings of the Knight.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Other_PC_The Sims_Bittersweet.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Other_PC_The Sims_Buying Theme.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Other_PC_The Sims_New Beginnings.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Other_PC_The Sims_Since We Met.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Other_PC_The Sims_The Neighbourhood.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Other_PC_The Sims_The Simple Life.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Other_PC_The Sims_Theme 4.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Other_PC_The Sims_Theme 5.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Other_PC_Warcraft III Reign of Chaos_Blackrock and Roll.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Other_PC_Warcraft II_Human Theme 1.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Other_PC_Warcraft II_Orc Theme 1.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Other_PC_World of Warcraft Warlords of Draenor_Song of Elune.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Other_PC_World of Warcraft Warlords of Draenor_Stormwind.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Other_PC_World of Warcraft Wrath of the Lich King_Arthas my Son.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Other_PS2_Shadow of the Colossus_Memories.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Other_PS2_Shadow of the Colossus_Prayer.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Other_PS2_Shadow of the Colossus_The Farthest Land.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Other_PS2_Shadow of the Colossus_The Opened Way.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Other_PS2_Shadow of the Colossus_The Tale of the 16 Sacrifices.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Star Fox_GCN_Star Fox Adventures_Dark Ice Mines.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Star Fox_SNES_Star Fox_Corneria.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Star Fox_SNES_Star Fox_Map.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Star Fox_SNES_Star Fox_SpaceArmada.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Star Fox_SNES_Star Fox_Stage_Clear.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Star Fox_SNES_Star Fox_Venom.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Super Mario_N64_Super Mario 64_Cool Cool Mountain.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Super Mario_N64_Super Mario 64_Dire Dire Docks.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Super Mario_N64_Super Mario 64_Final Bowser.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Super Mario_N64_Super Mario 64_Haunted Merry Go Round.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Super Mario_N64_Super Mario 64_Koopas Theme.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Super Mario_N64_Super Mario 64_Princess Secret Slide.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Super Mario_N64_Super Mario 64_Select a File.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Super Mario_NES_Super Mario Bros_Main Theme.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Super Mario_NES_Super Mario Bros_Underwater.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Super Mario_NES_Super Mario Bros_Underworld.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Super Mario_SNES_Super Mario World_Castle.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Super Mario_SNES_Super Mario World_Ending Theme.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Super Mario_SNES_Super Mario World_Forest of Illusion.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Super Mario_SNES_Super Mario World_Map.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Super Mario_SNES_Super Mario World_Overworld 2.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Super Mario_SNES_Super Mario World_Overworld.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Super Mario_SNES_Super Mario World_Title Screen.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\The Legend of Zelda_N64_The Legend of Zelda Majora's Mask_Alien Invasion.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\The Legend of Zelda_N64_The Legend of Zelda Majora's Mask_Chase Theme.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\The Legend of Zelda_N64_The Legend of Zelda Majora's Mask_Clock Town.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\The Legend of Zelda_N64_The Legend of Zelda Majora's Mask_Cremias Wagon Ride.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\The Legend of Zelda_N64_The Legend of Zelda Majora's Mask_Deku Palace.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\The Legend of Zelda_N64_The Legend of Zelda Majora's Mask_Song of Healing.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\The Legend of Zelda_N64_The Legend of Zelda Majora's Mask_Stone Temple Tower.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\The Legend of Zelda_N64_The Legend of Zelda Majora's Mask_Stone Tower Temple Inverted.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\The Legend of Zelda_N64_The Legend of Zelda Majora's Mask_The Mayors Office.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\The Legend of Zelda_N64_The Legend of Zelda Ocarina of Time_Forest Temple.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\The Legend of Zelda_N64_The Legend of Zelda Ocarina of Time_Ganondorf.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\The Legend of Zelda_N64_The Legend of Zelda Ocarina of Time_Gerudo Valley.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\The Legend of Zelda_N64_The Legend of Zelda Ocarina of Time_Goron City.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\The Legend of Zelda_N64_The Legend of Zelda Ocarina of Time_Hyrule Castle Courtyard.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\The Legend of Zelda_N64_The Legend of Zelda Ocarina of Time_Hyrule Castle Town.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\The Legend of Zelda_N64_The Legend of Zelda Ocarina of Time_Inside Jabu Jabus Belly.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\The Legend of Zelda_N64_The Legend of Zelda Ocarina of Time_Introduction.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\The Legend of Zelda_N64_The Legend of Zelda Ocarina of Time_Kakariko Village.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\The Legend of Zelda_N64_The Legend of Zelda Ocarina of Time_Kokiri Forest.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\The Legend of Zelda_N64_The Legend of Zelda Ocarina of Time_Links House.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\The Legend of Zelda_N64_The Legend of Zelda Ocarina of Time_Lost Woods.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\The Legend of Zelda_N64_The Legend of Zelda Ocarina of Time_Medley of Time.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\The Legend of Zelda_N64_The Legend of Zelda Ocarina of Time_Owls Theme.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\The Legend of Zelda_N64_The Legend of Zelda Ocarina of Time_Prelude of Light.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\The Legend of Zelda_N64_The Legend of Zelda Ocarina of Time_Sarias Song.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\The Legend of Zelda_N64_The Legend of Zelda Ocarina of Time_Serenade of Water.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\The Legend of Zelda_N64_The Legend of Zelda Ocarina of Time_Song of Storms.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\The Legend of Zelda_N64_The Legend of Zelda Ocarina of Time_Temple of Time.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\The Legend of Zelda_N64_The Legend of Zelda Ocarina of Time_Windmill Hut.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\The Legend of Zelda_N64_The Legend of Zelda Ocarina of Time_Zeldas Lullaby.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Xeno_PS1_Xenogears_Bonds of Sea and Fire.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Xeno_PS1_Xenogears_Gathering Stars In the Night Sky.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Xeno_PS1_Xenogears_Knight of Fire.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Xeno_PS1_Xenogears_Lost Broken Shards.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Xeno_PS1_Xenogears_Ship of Regret and Sleep.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Xeno_PS1_Xenogears_Tears of the Stars Hearts of the People.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Xeno_PS1_Xenogears_The Wounded Shall Advance Into the Light.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Xeno_PS1_Xenogears_Treasure Which Cannot Be Stolen.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Xeno_PS1_Xenogears_Two Pieces.mid,0.0,0.0,UNK
+C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\vgmidi_raw\labelled\midi\Xeno_PS1_Xenogears_Valley Where the Wind Is Born.mid,0.0,0.0,UNK

@@ -40,3 +40,5 @@ soundfonts/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+midnight-plugins/build/
