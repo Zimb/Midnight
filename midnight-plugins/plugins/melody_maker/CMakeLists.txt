@@ -48,7 +48,11 @@ set(_vst3_extra_sources
     "${vst3sdk_SOURCE_DIR}/public.sdk/source/vst/vstsinglecomponenteffect.cpp"
 )
 
-add_library(midnight_melody_vst3 MODULE plugin_vst3.cpp ${_vst3_extra_sources})
+add_library(midnight_melody_vst3 MODULE
+    plugin_vst3.cpp
+    view.cpp
+    ${_vst3_extra_sources}
+)
 
 target_include_directories(midnight_melody_vst3 PRIVATE
     ${_common_dir}
@@ -78,6 +82,7 @@ if(WIN32)
         NOMINMAX
         WIN32_LEAN_AND_MEAN
         _CRT_SECURE_NO_WARNINGS
+        MM_DEBUG_LOG          # Enable file logging to %TEMP%\midnight_debug.log
     )
 endif()
 

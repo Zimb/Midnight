@@ -18,13 +18,35 @@ Midnight-1/
 │   ├── plugins/melody_maker/
 │   │   ├── CMakeLists.txt              # targets: melody_maker_clap + midnight_melody_vst3
 │   │   ├── plugin.cpp                  # CLAP implementation
-│   │   └── plugin_vst3.cpp             # VST3 implementation (~7760 lignes)
+│   │   ├── plugin_vst3.cpp             # VST3 DLL entry point (39 lignes) — TSF_IMPLEMENTATION ici
+│   │   ├── plugin_vst3.h               # Classe MelodyMakerVST3 + toutes méthodes (~2935 lignes)
+│   │   ├── view.cpp                    # MelodyMakerView + createView() (~4456 lignes)
+│   │   ├── ui_constants.h              # IDs contrôles, MkStyleDef, palette couleurs (166 lignes)
+│   │   ├── knob.h                      # KnobWidget Win32 custom (199 lignes, header-only)
+│   │   └── logger.h                    # Logger debug thread-safe → %TEMP%\midnight_debug.log
 │   └── build/                          # dossier de build CMake (ne pas éditer manuellement)
 ├── ml_training/                        # scripts Python d'entraînement ML
 ├── soundfonts/                         # SF2 assets
 ├── diagnose_cpp_syntax.py              # outil de diagnostic C++ maison
 └── COPILOT_MEMO.md                     # CE FICHIER
 ```
+
+### Découpe de plugin_vst3.cpp (opération réalisée)
+
+L'ancien monofichier de 7754 lignes a été découpé en :
+
+| Fichier | Contenu | Lignes |
+|---------|---------|--------|
+| `plugin_vst3.cpp` | DLL entry point : `TSF_IMPLEMENTATION`, `g_hInst`, `DllMain`, factory macros | 39 |
+| `plugin_vst3.h` | Classe `MelodyMakerVST3` + toutes méthodes inline / out-of-class | ~2935 |
+| `view.cpp` | `MelodyMakerView` (IPlugView) + `MelodyMakerVST3::createView()` | ~4456 |
+| `ui_constants.h` | IDs, styles, couleurs | 166 |
+| `knob.h` | `KnobWidget` (Win32 custom rotary) | 199 |
+| `logger.h` | Logger debug zero-overhead | ~110 |
+
+**Règle critique** : `#define TSF_IMPLEMENTATION` doit apparaître dans **exactement un seul .cpp** (plugin_vst3.cpp). Jamais dans un header.
+
+**Règle critique** : `g_hInst` est défini dans `plugin_vst3.cpp` (non-static global), déclaré `extern HINSTANCE g_hInst;` dans `knob.h`.
 
 ---
 
@@ -107,24 +129,70 @@ $lines[500..510] | ForEach-Object -Begin {$i=501} -Process {"$i: $_"; $i++}
 
 ---
 
-## 4. Structure de plugin_vst3.cpp (état post-corrections)
+## 4. Structure de plugin_vst3.h (état post-découpe)
 
 ```
-Lignes 1-156     : includes, defines, forward declarations
-Ligne 157        : class MelodyMakerVST3 : public SingleComponentEffect {
-Lignes 158-291   : méthodes simples inline dans la classe (initialize, terminate, etc.)
-Ligne 292        : tresult PLUGIN_API process(ProcessData& data) override;  ← DÉCLARATION SEULE
-Lignes 293-~2200 : reste du corps de la classe (membres, méthodes)
-Ligne ~2200      : };   ← fin de MelodyMakerVST3
-Lignes ~2201-7007: définitions out-of-class (setState, getState, createView prep, etc.)
-Ligne 7008       : tresult PLUGIN_API MelodyMakerVST3::process(ProcessData& data) { ... }
-Lignes ~7009-7756: suite du corps de process()
-Ligne 7757+      : IPlugView* PLUGIN_API MelodyMakerVST3::createView(...), IMPLEMENT_FUNKNOWN_METHODS, etc.
+plugin_vst3.h — ~2935 lignes
+  L1        : #pragma once
+  L4        : #include "logger.h"    ← logger zero-overhead
+  L5        : #include "../../common/algo.h"
+  L10       : #include "../../common/tsf.h"   (sans TSF_IMPLEMENTATION)
+  L60       : extern HINSTANCE g_hInst;
+  L70       : using namespace Steinberg; ...
+  L~90      : class MelodyMakerVST3 : public SingleComponentEffect {
+  L~150     :   initialize, terminate, setupProcessing... (déclarations + petites inline)
+  L292      :   tresult PLUGIN_API process(...) override;  ← déclaration seule
+  L~400     :   processEvents(), NoteOn/NoteOff handlers
+  L~660     : };  ← fin de classe
+  L~680+    : tresult PLUGIN_API MelodyMakerVST3::process(...) {  ← corps out-of-class
+  L~1030    : }  ← fin process
+  L~1035+   : loadSoundFont, closeSoundFont, reloadLiveSf, getState, setState...
 ```
 
 ---
 
-## 5. Patterns à éviter / règles de code
+## 5. Logger de debug (logger.h)
+
+## 5. Logger de debug (logger.h)
+
+Fichier : `midnight-plugins/plugins/melody_maker/logger.h`
+Sortie  : `%TEMP%\midnight_debug.log` (p.ex. `C:\Users\dossa\AppData\Local\Temp\midnight_debug.log`)
+
+### Macros disponibles
+
+| Macro | Quand utiliser |
+|-------|----------------|
+| `MM_LOG(fmt, ...)` | Log immédiat (NoteOn/Off, changement de section) |
+| `MM_LOG_ONCE(fmt, ...)` | Erreur qui ne doit apparaître qu'une fois (sfReady faux) |
+| `MM_LOG_CHANGE(label, expr)` | Détecte un changement d'état (rolling, hasTrigger) |
+| `MM_LOG_EVERY(n, fmt, ...)` | Transport / density gate — 1 log toutes les n invocations |
+
+### Activation / désactivation
+Activé via `CMakeLists.txt` : `target_compile_definitions(... PRIVATE MM_DEBUG_LOG)`  
+Pour build release final sans log : supprimer `MM_DEBUG_LOG` de CMakeLists.txt. Aucun code supplémentaire à toucher.
+
+### Points de log déjà insérés dans plugin_vst3.h
+
+| Endroit | Macro | Info loguée |
+|---------|-------|-------------|
+| Début de process() (1/500 blocks) | `MM_LOG_EVERY` | rolling, beatPos, bpm, triggerCount, sfReady |
+| `!rolling` détecté | `MM_LOG_CHANGE` | passage rolling→stopped |
+| `!hasTrigger()` détecté | `MM_LOG_CHANGE` | passage triggered→idle et retour |
+| Changement de section | `MM_LOG` | pitch, holdBeats, nouveau sec, sectionVolumeRamp |
+| density gate filtré (1/200) | `MM_LOG_EVERY` | style, slot, roll, effDensity |
+| velocity < 0.02 après ramp | `MM_LOG_EVERY` | vel, ramp, section — **note ignorée** |
+| `sfReady = true` (loadSoundFont) | `MM_LOG` | confirmation chargement |
+| `sfReady = false` (closeSoundFont) | `MM_LOG` | confirmation fermeture |
+
+### Comment lire le log en temps réel
+```powershell
+$log = "$env:TEMP\midnight_debug.log"
+Get-Content $log -Wait -Tail 40
+```
+
+---
+
+## 6. Patterns à éviter / règles de code
 
 ### Windows.h
 ```cpp
@@ -172,11 +240,26 @@ Si une méthode **inline** dans la classe référence des membres déclarés plu
 
 ---
 
-## 7. Points en suspens / À faire
+## 7. Fichiers et outils auxiliaires
 
-- [ ] **SF2 Editor dans l'onglet Maker** — vérifier que l'UI fonctionne (question originale de l'utilisateur)
+| Fichier | Rôle |
+|---------|------|
+| `check_braces.py` | Rapport des lignes d'ouverture/fermeture des classes |
+| `diagnose_cpp_syntax.py` | Vérification équilibre `{}()[]`, patterns std::clamp suspects, build optionnel |
+| `_move_process_out.ps1` | Script PowerShell utilisé pour déplacer process() — peut être réutilisé |
+| `diagnose_cpp_syntax.py --build` | Lance le build CMake et filtre les erreurs |
+
+---
+
+## 8. Points en suspens / À faire
+
+- [x] **Découpe plugin_vst3.cpp** → plugin_vst3.h + view.cpp + ui_constants.h + knob.h + logger.h ✅
+- [x] **Build vérifié après découpe** — Build succeeded ✅
+- [x] **Logger debug** — logger.h créé, MM_DEBUG_LOG activé dans CMakeLists, build OK ✅
+- [x] **Fix velocity=0 NoteOn** — `if (velocity < 0.02f) continue;` + log ✅
+- [ ] **Bug silence intermittent** — root cause probable: long note sur C/C# → kSecIntro → ramp=0 → silence 16 bars. Logger en place pour confirmer. Envisager de relever le seuil `holdBeats >= 1.5` → `4.0`
+- [ ] **SF2 Editor dans l'onglet Maker** — vérifier que l'UI fonctionne
 - [ ] **Warnings C4100 / C4189** — paramètres et variables non référencés (non bloquants)
-- [ ] **Warning C4310** — cast tronque une constante (lignes 3972, 3976)
 - [ ] **Tester dans FL Studio** — charger le VST3 depuis `midnight-plugins/build/VST3/MidnightMelodyMaker(beta).vst3`
 - [ ] **Plugin CLAP** — n'a pas été testé dans cette session
 

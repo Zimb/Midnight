@@ -54,27 +54,6 @@ static constexpr uint16_t GEN_COARSE_TUNE         = 51;  // demi-tons (-120 à +
 static constexpr uint16_t GEN_FINE_TUNE           = 52;  // cents (-99 à +99)
 static constexpr uint16_t GEN_SCALE_TUNING        = 56;  // cents/demi-ton (default 100)
 
-// ---- Low-level binary helpers (forward-declared here so preset parsing can use them) ----
-static inline uint32_t readU32LE(const uint8_t* p) {
-    return (uint32_t)p[0] | ((uint32_t)p[1]<<8) | ((uint32_t)p[2]<<16) | ((uint32_t)p[3]<<24);
-}
-static inline uint16_t readU16LE(const uint8_t* p) {
-    return (uint16_t)p[0] | ((uint16_t)p[1]<<8);
-}
-static inline void writeI16LE(uint8_t* p, int16_t v) {
-    p[0] = (uint8_t)((uint16_t)v & 0xFF);
-    p[1] = (uint8_t)(((uint16_t)v >> 8) & 0xFF);
-}
-static inline bool tag4(const uint8_t* p, const char* t) {
-    return p[0]==t[0] && p[1]==t[1] && p[2]==t[2] && p[3]==t[3];
-}
-static inline int16_t clampI16(int v, int lo, int hi) {
-    return (int16_t)std::clamp(v, lo, hi);
-}
-
-// ---- Structure delta -------------------------------------------------------
-// Tous les champs sont additifs sur les valeurs existantes dans le SF2.
-// Laisser à 0 = aucun changement pour ce paramètre.
 struct Sf2Delta {
     // Accordage
     int   coarseTune      = 0;   // demi-tons à ajouter (−24..+24)
@@ -108,16 +87,40 @@ struct Sf2Delta {
     int   panDelta        = 0;   // -500..+500
 };
 
+// Convertit un multiplicateur de temps (ex: 2.0 = doubler la durée) en delta timecents.
+// scaleToTimecents(2.0f) = +1200   (attaque 2× plus lente)
+// scaleToTimecents(0.5f) = −1200   (attaque 2× plus rapide)
 inline int scaleToTimecents(float scale) {
     if (scale <= 0.001f) return -12000;
     return (int)std::round(1200.0 * std::log2((double)scale));
 }
 
+// Petites fonctions de lecture/écriture binaire --
+static inline uint32_t readU32LE(const uint8_t* p) {
+    return (uint32_t)p[0] | ((uint32_t)p[1]<<8) | ((uint32_t)p[2]<<16) | ((uint32_t)p[3]<<24);
+}
+static inline uint16_t readU16LE(const uint8_t* p) {
+    return (uint16_t)p[0] | ((uint16_t)p[1]<<8);
+}
+static inline void writeI16LE(uint8_t* p, int16_t v) {
+    p[0] = (uint8_t)((uint16_t)v & 0xFF);
+    p[1] = (uint8_t)(((uint16_t)v >> 8) & 0xFF);
+}
+static inline bool tag4(const uint8_t* p, const char* t) {
+    return p[0]==t[0] && p[1]==t[1] && p[2]==t[2] && p[3]==t[3];
+}
+static inline int16_t clampI16(int v, int lo, int hi) {
+    return (int16_t)std::clamp(v, lo, hi);
+}
+
+// Applique le delta sur un enregistrement générateur (4 bytes : uint16 oper + int16 amount).
+// Modifie les bytes en place. Retourne true si modifié.
 static bool patchGen(uint8_t* rec, const Sf2Delta& d) {
     uint16_t oper = readU16LE(rec);
     int      amt  = (int)(int16_t)readU16LE(rec + 2);
     int      out  = amt;
     bool     hit  = true;
+
     switch (oper) {
     case GEN_COARSE_TUNE:         out = clampI16(amt + d.coarseTune,      -120,  120); break;
     case GEN_FINE_TUNE:           out = clampI16(amt + d.fineTune,          -99,   99); break;
@@ -138,6 +141,7 @@ static bool patchGen(uint8_t* rec, const Sf2Delta& d) {
     case GEN_PAN:                 out = clampI16(amt + d.panDelta,           -500,  500); break;
     default: hit = false; break;
     }
+
     if (hit && out != amt) writeI16LE(rec + 2, (int16_t)out);
     return hit;
 }
@@ -397,6 +401,10 @@ inline bool applyDeltaToPreset(std::vector<uint8_t>& sf2,
     }
     return true;
 }
+
+// ---- Structure delta -------------------------------------------------------
+// Tous les champs sont additifs sur les valeurs existantes dans le SF2.
+// Laisser à 0 = aucun changement pour ce paramètre.
 
 // applyDelta — modifie tous les générateurs IGEN et PGEN dans le buffer SF2.
 // Opère en place (les bytes des samples ne sont pas touchés).
