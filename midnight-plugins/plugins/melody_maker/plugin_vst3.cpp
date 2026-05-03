@@ -12,11 +12,21 @@
 // =============================================================================
 
 #include "../../common/algo.h"
+#include "../../ml_training/data/patterns/generated_phrases.h"
 
 // TinySoundFont â€“ single-header SoundFont2 synthesizer (MIT)
 // Provides high-quality sampled instrument sounds from any .sf2 file.
 #define TSF_IMPLEMENTATION
 #include "../../common/tsf.h"
+
+// SoundFont Maker â€“ procedural .sf2 generator (header-only).
+#include "../../common/sf2_maker.h"
+
+// SoundFont Editor — delta-patcher sur SF2 existants (header-only).
+#include "../../common/sf2_editor.h"
+
+// FX â€“ chorus / delay / reverb / cassette noise (header-only).
+#include "../../common/fx.h"
 
 // VST3 SDK headers â€“ supplied via the sdk target from FetchContent
 #include "pluginterfaces/vst/ivstparameterchanges.h"
@@ -62,6 +72,10 @@ BOOL WINAPI DllMain(HINSTANCE hDll, DWORD reason, LPVOID) {
     return TRUE;
 }
 
+#include "ui_constants.h"
+#include "knob.h"
+#include "view.h"
+
 using namespace Steinberg;
 using namespace Steinberg::Vst;
 
@@ -74,8 +88,9 @@ static const FUID kMelodyMakerUID(0xA3F7E291, 0x5CB24D18, 0x87A04E2C, 0x9B8D1F05
 // -----------------------------------------------------------------------------
 // SoundFont preset catalog â€“ per style, only patches that "fit" the role.
 // `bank` is 0 for melodic instruments and 128 for drum kits (mididrums flag).
+// `source` selects the underlying SF2: 0 = GeneralUser GS, 1 = Midnight Lofi.
 // -----------------------------------------------------------------------------
-struct SfPreset { const wchar_t* name; int program; int bank; };
+struct SfPreset { const wchar_t* name; int program; int bank; int source = 0; };
 
 static const SfPreset kSfPresetsByStyle[6][16] = {
     // 0 â€” Voix (vents : bois & cuivres, registre lead/expressif)
@@ -95,7 +110,7 @@ static const SfPreset kSfPresetsByStyle[6][16] = {
       {L"Sitar",          104,  0}, {L"Banjo",          105,  0},
       {L"Shamisen",       106,  0}, {L"Koto",           107,  0},
       {L"Kalimba",        108,  0}, {L"Pizzicato",       45,  0},
-      {L"",                 0,  0}, {L"",                 0,  0} },
+      {L"Lofi Harp",       46,  0, 1}, {L"",                 0,  0} },
     // 2 â€” Basse
     { {L"Bass acoustique", 32,  0}, {L"E-Bass doigts",   33,  0},
       {L"E-Bass mÃ©diator", 34,  0}, {L"Fretless",        35,  0},
@@ -131,9 +146,9 @@ static const SfPreset kSfPresetsByStyle[6][16] = {
       {L"Cordes",          48,  0}, {L"Synth Strings",   50,  0},
       {L"Choeur Aahs",     52,  0}, {L"Voix Oohs",       53,  0},
       {L"Pad chaud",       89,  0}, {L"Pad polysynth",   90,  0},
-      {L"Orgue Hammond",   16,  0}, {L"",                 0,  0} },
+      {L"Orgue Hammond",   16,  0}, {L"Lofi Piano",       0,  0, 1} },
 };
-static constexpr int kSfPresetCount[6] = { 16, 14, 12, 8, 12, 15 };
+static constexpr int kSfPresetCount[6] = { 16, 15, 12, 8, 12, 16 };
 
 // =============================================================================
 // MelodyMakerVST3
@@ -206,9 +221,14 @@ public:
         tresult res = SingleComponentEffect::initialize(context);
         if (res != kResultOk) return res;
 
-        // Silent stereo audio output keeps FL Studio happy (it treats the
-        // plugin as an instrument/generator rather than a MIDI effect).
-        addAudioOutput(STR16("Stereo Out"), SpeakerArr::kStereo);
+        // Six stereo audio outputs — one per instrument style.
+        // In FL Studio Patcher each bus maps to a separate mixer track.
+        addAudioOutput(STR16("Melodie"),  SpeakerArr::kStereo);
+        addAudioOutput(STR16("Arpege"),   SpeakerArr::kStereo);
+        addAudioOutput(STR16("Basse"),    SpeakerArr::kStereo);
+        addAudioOutput(STR16("Percu."),   SpeakerArr::kStereo);
+        addAudioOutput(STR16("Contre"),   SpeakerArr::kStereo);
+        addAudioOutput(STR16("Piano"),    SpeakerArr::kStereo);
 
         // Event input bus â€“ receives MIDI from FL Studio piano keyboard / piano roll.
         addEventInput(STR16("MIDI In"), 1);
@@ -250,6 +270,8 @@ public:
     tresult PLUGIN_API setupProcessing(ProcessSetup& setup) override {
         sampleRate = setup.sampleRate;
         loadSoundFont();
+        for (int s = 0; s < 6; ++s) fxChainPerStyle[s].prepare((float)sampleRate);
+        applyAllFxParams();
         return SingleComponentEffect::setupProcessing(setup);
     }
 
@@ -257,12 +279,11 @@ public:
         SpeakerArrangement* inputs,  int32 numIns,
         SpeakerArrangement* outputs, int32 numOuts) override
     {
-        // Accept stereo out, no audio in.
-        if (numIns == 0 && numOuts == 1 && outputs[0] == SpeakerArr::kStereo)
-            return kResultTrue;
-        if (numIns == 0 && numOuts == 0)
-            return kResultTrue;
-        return kResultFalse;
+        // Accept no audio inputs; any number of stereo outputs.
+        if (numIns != 0) return kResultFalse;
+        for (int32 i = 0; i < numOuts; ++i)
+            if (outputs[i] != SpeakerArr::kStereo) return kResultFalse;
+        return kResultTrue;
     }
 
     tresult PLUGIN_API canProcessSampleSize(int32 symbolicSampleSize) override {
@@ -272,602 +293,7 @@ public:
     // -------------------------------------------------------------------------
     // IAudioProcessor::process â€“ core callback, called every audio block
     // -------------------------------------------------------------------------
-    tresult PLUGIN_API process(ProcessData& data) override
-    {
-        // -- Apply parameter automation changes --
-        if (data.inputParameterChanges) {
-            int32 numQ = data.inputParameterChanges->getParameterCount();
-            for (int32 q = 0; q < numQ; ++q) {
-                IParamValueQueue* queue = data.inputParameterChanges->getParameterData(q);
-                if (!queue) continue;
-                ParamID pid = queue->getParameterId();
-                // Section parameter — update currentSection from automation/host restore.
-                if (pid == kParamSection) {
-                    int32 nPts = queue->getPointCount();
-                    if (nPts > 0) {
-                        int32 off; ParamValue nv;
-                        queue->getPoint(nPts - 1, off, nv);
-                        int sec = std::clamp((int)std::round(nv * 4.0), 0, (int)kSecCount - 1);
-                        currentSection.store(sec, std::memory_order_relaxed);
-                    }
-                    continue;
-                }
-                if (pid >= mm::kParamCount) continue;
-                int32 nPoints = queue->getPointCount();
-                if (nPoints > 0) {
-                    int32 offset; ParamValue norm;
-                    queue->getPoint(nPoints - 1, offset, norm);
-                    // norm âˆˆ [0, 1]  â†’  actual param range
-                    const mm::ParamDef& d = mm::kParamDefs[pid];
-                    paramValues[pid] = d.min_value + norm * (d.max_value - d.min_value);
-                    // Mirror into the active style's slot only.
-                    // NOTE: we do NOT broadcastParamLocked here because
-                    // inputParameterChanges can be a roundtrip from our own
-                    // setParamNormalized() call (triggered during tab switch).
-                    // Broadcasting here would overwrite all locked tabs with
-                    // the newly-loaded style's values, which is the bug.
-                    // Locking / broadcasting is already done in sendParam()
-                    // (the GUI code path) at the moment the user edits a knob.
-                    int activeStyle = getStyleType();
-                    paramValuesPerStyle[activeStyle][pid] = paramValues[pid];
-                }
-            }
-        }
-
-        // -- Handle incoming MIDI (piano roll trigger notes) --
-        // A note placed in the piano roll = trigger: its pitch defines the
-        // root key of the generated melody, and its duration = melody length.
-        if (data.inputEvents) {
-            int32 numEvIn = data.inputEvents->getEventCount();
-            for (int32 e = 0; e < numEvIn; ++e) {
-                Event ev{};
-                if (data.inputEvents->getEvent(e, ev) == kResultOk) {
-                    // bus 0 = main trigger input ; bus 1 = "Context In"
-                    // (listen-only, used for auto key/mode detection).
-                    int busIdx = ev.busIndex;
-                    double evBeat = (data.processContext &&
-                                     (data.processContext->state &
-                                      ProcessContext::kProjectTimeMusicValid))
-                        ? data.processContext->projectTimeMusic
-                        : 0.0;
-                    if (ev.type == Event::kNoteOnEvent && ev.noteOn.velocity > 0.0f) {
-                        ctxNoteOn(busIdx, ev.noteOn.pitch,
-                                  ev.noteOn.velocity, evBeat);
-                        if (busIdx == 0) {
-                            // Add to trigger stack if not already present and not full
-                            bool already = false;
-                            for (int ti = 0; ti < triggerCount; ++ti)
-                                if (triggerStack[ti].pitch == ev.noteOn.pitch) { already = true; break; }
-                            if (!already && triggerCount < kMaxTriggers) {
-                                // Do NOT reset lastSlot here. When notes are placed
-                                // consecutively in the piano roll (C5→E5→C#5…), the
-                                // slot grid must continue seamlessly from where the
-                                // previous note left off. Resetting to -1 would restart
-                                // the rhythmic phase mid-bar, causing the "off-the-measure"
-                                // artefact. Legitimate resets (loop restart, transport stop,
-                                // backward seek) are handled further below.
-                                triggerStack[triggerCount++] = { ev.noteOn.pitch, ev.noteOn.noteId, evBeat };
-                            }
-                        }
-                    } else if (ev.type == Event::kNoteOffEvent) {
-                        ctxNoteOff(busIdx, ev.noteOff.pitch, evBeat);
-                        if (busIdx == 0) {
-                            // Remove matching pitch; long-note triggers section change.
-                            for (int ti = 0; ti < triggerCount; ++ti) {
-                                if (triggerStack[ti].pitch == ev.noteOff.pitch) {
-                                    double holdBeats = evBeat - triggerStack[ti].beatTimeOn;
-                                    if (holdBeats >= 1.5 && triggerCount == 1) {
-                                        int p = ev.noteOff.pitch % 12;
-                                        int sec = (p <= 1) ? kSecIntro
-                                                : (p <= 3) ? kSecVerse
-                                                : (p <= 5) ? kSecChorus
-                                                : (p <= 7) ? kSecBridge
-                                                :             kSecOutro;
-                                        currentSection.store(sec, std::memory_order_relaxed);
-                                        if (sec == kSecIntro && !introFadeDone)  sectionVolumeRamp = 0.0f;
-                                        if (sec == kSecOutro)  sectionVolumeRamp = 1.0f;
-                                    }
-                                    triggerStack[ti] = triggerStack[--triggerCount];
-                                    break;
-                                }
-                            }
-                            // Release voices when last trigger key is up.
-                            // Use sfNoteOff per active note (graceful release
-                            // envelope) rather than killing the synth state,
-                            // which would create an audible click/dropout.
-                            if (triggerCount == 0) {
-                                for (auto& v : voicePool) v.noteOff = true;
-                                for (const auto& n : activeNotes)
-                                    sfNoteOff(n.noteId, n.key);
-                                activeNotes.clear();
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // -- Clear audio output (voices will be mixed in at end of process) --
-        if (data.outputs && data.numOutputs > 0) {
-            AudioBusBuffers& bus = data.outputs[0];
-            bus.silenceFlags = 0;
-            for (int32 ch = 0; ch < bus.numChannels; ++ch)
-                if (bus.channelBuffers32 && bus.channelBuffers32[ch])
-                    std::memset(bus.channelBuffers32[ch], 0,
-                                sizeof(float) * static_cast<size_t>(data.numSamples));
-        }
-
-        // -- Read transport --
-        bool   rolling = false;
-        double beatPos = 0.0;
-        double bpm     = 120.0;
-        if (data.processContext) {
-            const ProcessContext& ctx = *data.processContext;
-            if (ctx.state & ProcessContext::kTempoValid)
-                bpm = ctx.tempo;
-            if (ctx.state & ProcessContext::kPlaying)
-                rolling = true;
-            if (ctx.state & ProcessContext::kProjectTimeMusicValid)
-                beatPos = ctx.projectTimeMusic;
-        }
-
-        lastBpm.store((float)bpm, std::memory_order_relaxed);
-        if (rolling) lastBeatPos.store(beatPos, std::memory_order_relaxed);
-
-        // Detect loop restart or backward seek: reset note-trigger state.
-        if (rolling && prevBeatPos >= 0.0 && beatPos < prevBeatPos - 0.25) {
-            lastSlot = -1;
-            // Gracefully release only the notes that were still pending
-            // (so the SoundFont's natural release envelope avoids a click)
-            // rather than nuking the whole synth state.
-            IEventList* loopOutEvents = data.outputEvents;
-            for (const auto& n : activeNotes) {
-                if (loopOutEvents) {
-                    Event off{};
-                    off.type             = Event::kNoteOffEvent;
-                    off.sampleOffset     = 0;
-                    off.noteOff.channel  = n.channel;
-                    off.noteOff.pitch    = n.key;
-                    off.noteOff.noteId   = n.noteId;
-                    off.noteOff.velocity = 0.f;
-                    loopOutEvents->addEvent(off);
-                }
-                releaseVoice(n.noteId, n.key); // calls sfNoteOff (smooth release)
-            }
-            activeNotes.clear();
-            if (recMtx.try_lock()) { recNotes.clear(); recMtx.unlock(); }
-            recStartBeat = beatPos;
-        }
-        // Detect transport start: begin fresh recording
-        if (rolling && prevBeatPos < 0.0) {
-            if (recMtx.try_lock()) { recNotes.clear(); recMtx.unlock(); }
-            recStartBeat = beatPos;
-        }
-        prevBeatPos = rolling ? beatPos : -1.0;
-
-        IEventList* outEvents = data.outputEvents;
-        const uint32 nframes  = static_cast<uint32>(data.numSamples);
-
-        // -- Send MIDI CCs to downstream synth (e.g. Sytrus) on style change --
-        // CCs shape the timbre to match the current style automatically.
-        {
-            int curStyle = getStyleType();
-            if (curStyle != lastSentStyle && outEvents) {
-                // {CC number, value per style[0..4]}
-                // CC73=Attack  CC72=Release  CC74=Brightness  CC71=Resonance  CC91=Reverb
-                struct CcPreset { uint8 cc; int8 vals[5]; };
-                static const CcPreset kPresets[] = {
-                    //          Mel  Harp Basse Perc  Mari
-                    { 73, { 40,   5,  25,    0,   8 } }, // Attack
-                    { 72, { 60,  90, 110,   10,  30 } }, // Release
-                    { 74, { 64, 100,  30,  110,  90 } }, // Brightness
-                    { 71, { 20,  50,  80,   15,  35 } }, // Resonance
-                    { 91, { 30,  60,  15,    5,  20 } }, // Reverb
-                };
-                for (auto& p : kPresets) {
-                    Event cc{};
-                    cc.type                   = Event::kLegacyMIDICCOutEvent;
-                    cc.sampleOffset           = 0;
-                    cc.midiCCOut.channel      = 0;
-                    cc.midiCCOut.controlNumber = p.cc;
-                    cc.midiCCOut.value        = p.vals[curStyle];
-                    cc.midiCCOut.value2       = 0;
-                    outEvents->addEvent(cc);
-                }
-                lastSentStyle = curStyle;
-            }
-        }
-
-        // -- Flush pending note-offs that fall within this block --
-        for (auto it = activeNotes.begin(); it != activeNotes.end();) {
-            if (it->offSample < static_cast<int64_t>(nframes)) {
-                if (outEvents) {
-                    Event off{};
-                    off.type          = Event::kNoteOffEvent;
-                    off.sampleOffset  = static_cast<int32>(std::max(0LL, it->offSample));
-                    off.noteOff.channel  = it->channel;
-                    off.noteOff.pitch    = it->key;
-                    off.noteOff.noteId   = it->noteId;
-                    off.noteOff.velocity = 0.f;
-                    outEvents->addEvent(off);
-                }
-                releaseVoice(it->noteId, it->key);
-                it = activeNotes.erase(it);
-            } else {
-                it->offSample -= static_cast<int64_t>(nframes);
-                ++it;
-            }
-        }
-
-        if (!rolling) {
-            triggerCount = 0;
-            // Kill any still-sounding notes when transport stops.
-            if (outEvents && !activeNotes.empty()) {
-                for (auto& n : activeNotes) {
-                    Event off{};
-                    off.type             = Event::kNoteOffEvent;
-                    off.sampleOffset     = 0;
-                    off.noteOff.channel  = n.channel;
-                    off.noteOff.pitch    = n.key;
-                    off.noteOff.noteId   = n.noteId;
-                    off.noteOff.velocity = 0.f;
-                    outEvents->addEvent(off);
-                    releaseVoice(n.noteId, n.key);
-                }
-                activeNotes.clear();
-                sfAllNotesOff();
-            }
-            lastSlot = -1;
-            renderVoices(data.outputs, data.numOutputs, nframes);
-            return kResultOk;
-        }
-
-        // Only generate melody while at least one trigger note is held.
-        if (!hasTrigger()) {
-            renderVoices(data.outputs, data.numOutputs, nframes);
-            return kResultOk;
-        }
-
-        // -- Generate notes on beat subdivisions --
-        double bps           = std::max(0.05, bpm / 60.0);
-        double beatsPerSample = bps / sampleRate;
-        double blockEndBeat  = beatPos + static_cast<double>(nframes) * beatsPerSample;
-
-        // Master grid uses the active tab's subdiv (one shared rhythmic
-        // grid keeps instruments in sync). Density / NoteLen / Seed remain
-        // independent per instrument and are applied inside the style loop.
-        int    subdiv      = mm::normalized_subdiv(paramValues[mm::kParamSubdiv]);
-        double slotBeats   = 1.0 / static_cast<double>(subdiv);
-
-        // Update global section volume ramp once per process block.
-        {
-            static constexpr float kSecVol[kSecCount] = { 1.0f, 1.0f, 1.15f, 0.75f, 0.0f };
-            int   sec    = currentSection.load(std::memory_order_relaxed);
-            float target = kSecVol[std::clamp(sec, 0, (int)kSecCount - 1)];
-            float bblock = (float)((double)nframes * beatsPerSample);
-            float rate   = bblock / ((sec==kSecIntro || sec==kSecOutro) ? 16.0f : 4.0f);
-            if (sectionVolumeRamp < target) sectionVolumeRamp = std::min(target, sectionVolumeRamp + rate);
-            else                            sectionVolumeRamp = std::max(target, sectionVolumeRamp - rate);
-            // Mark the Intro fade as done once volume reaches 1 for the first time.
-            if (!introFadeDone && sectionVolumeRamp >= 1.0f && currentSection.load(std::memory_order_relaxed) == kSecIntro)
-                introFadeDone = true;
-        }
-
-        int64_t firstSlot = static_cast<int64_t>(
-            std::ceil(beatPos / slotBeats - 1e-9));
-        if (firstSlot <= lastSlot) firstSlot = lastSlot + 1;
-
-        for (int64_t slot = firstSlot; ; ++slot) {
-            double slotBeat = slot * slotBeats;
-            if (slotBeat >= blockEndBeat) break;
-
-            double offsetBeats = slotBeat - beatPos;
-            int32  sampleOffset = static_cast<int32>(
-                std::max(0.0, std::floor(offsetBeats / beatsPerSample)));
-            if (sampleOffset >= static_cast<int32>(nframes)) break;
-
-            // Compute slot position weight (shared across instruments).
-            int barLen     = subdiv * 4;
-            int posInBar   = (int)(((slot % barLen) + barLen) % barLen);
-            int beatInBar  = posInBar / subdiv;          // 0..3
-            int subInBeat  = posInBar % subdiv;
-            bool isDown    = (subInBeat == 0);
-            bool isStrong  = isDown && (beatInBar % 2 == 0);
-            double posWeight = isStrong ? 1.20 : isDown ? 1.00 : 0.55;
-            lastSlot = slot;
-
-            const uint32_t enabledMask = getEnabledMask();
-            // Per-style velocity is computed inside the loop now.
-
-            // ---- Auto key/mode from listened context ----------------------
-            // Run Krumhansl-Schmuckler on the rolling pitch-class histogram
-            // collected from incoming MIDI on both buses. Only override the
-            // user params when we have enough material to be confident.
-            int detectedKey = -1, detectedMode = -1;
-            if (getAutoKey()) {
-                double hist[12];
-                ctxSnapshot(hist);
-                double total = 0.0;
-                for (int i = 0; i < 12; ++i) total += hist[i];
-                if (total > 2.0) {
-                    int r, m;
-                    mm::detect_key(hist, r, m);
-                    detectedKey  = r;
-                    detectedMode = m; // 0=Major, 1=Minor (matches our enum)
-                }
-                // Slow decay so the analyser tracks modulations over time
-                // (â‰ˆ 0.5% per generation slot).
-                ctxDecay(0.995);
-            }
-
-            // Iterate over every enabled instrument tab. Each style now has
-            // its own Density / NoteLen / Seed / Mode / Progression /
-            // Wave â€” only the master rhythmic grid (Subdiv) is shared.
-            for (int styleIdx = 0; styleIdx < kStyleCount; ++styleIdx) {
-                if (!((enabledMask >> styleIdx) & 1u)) continue;
-                // Per-style start-bar: suppress notes until N bars have elapsed.
-                if (startBarPerStyle[styleIdx] > 0) {
-                    int64_t currentBar = slot / (int64_t)barLen;
-                    if (currentBar < (int64_t)startBarPerStyle[styleIdx]) continue;
-                }
-                const int style    = styleIdx;
-                const double* sp   = paramValuesPerStyle[styleIdx];
-                const int    sSeed = (int)std::round(sp[mm::kParamSeed]);
-                const double sDens = std::clamp(sp[mm::kParamDensity], 0.0, 1.0);
-                const double sNL   = std::clamp(sp[mm::kParamNoteLen], 0.05, 1.0);
-                const int    sProg = std::clamp(progPerStyle[styleIdx],
-                                                0, mm::kProgressionCount - 1);
-
-                // Per-style density gate (independent RNG per instrument).
-                // Mix EVERY style param into the seed so any GUI tweak
-                // instantly produces a different roll â€” Density, NoteLen,
-                // Mode, Wave, Progression, percRhythm, pianoMelody, even
-                // Subdiv all participate. This guarantees real-time
-                // refresh of the audio output on every parameter change.
-                uint32_t paramSalt = 0u;
-                for (int pi = 0; pi < (int)mm::kParamCount; ++pi) {
-                    // Quantize to int to ignore tiny float jitter from host.
-                    int32_t q = (int32_t)std::round(sp[pi] * 1000.0);
-                    paramSalt = paramSalt * 2654435761u
-                              + static_cast<uint32_t>(q) + 0x9E3779B9u;
-                }
-                paramSalt ^= static_cast<uint32_t>(wavePerStyle[styleIdx])    * 0x85EBCA6Bu;
-                paramSalt ^= static_cast<uint32_t>(progPerStyle[styleIdx])    * 0xC2B2AE35u;
-                paramSalt ^= static_cast<uint32_t>(percRhythmPerStyle[styleIdx]) * 0x27D4EB2Fu;
-                paramSalt ^= static_cast<uint32_t>(pianoMelodyPerStyle[styleIdx] ? 1u : 0u) * 0x165667B1u;
-
-                uint32_t rng = static_cast<uint32_t>(
-                    slot * 2246822519u
-                    + static_cast<uint32_t>(sSeed)    * 374761393u
-                    + static_cast<uint32_t>(styleIdx) * 2654435761u
-                    + paramSalt + 1u);
-                if (!rng) rng = 1;
-
-                // Per-style timing offset: Humanize (random jitter) + Retard (groove delay).
-                float humanize = humanizePerStyle[styleIdx];
-                float retard   = retardPerStyle[styleIdx];
-                int32 retardSamples = (int32)std::round(
-                    retard * slotBeats * 0.5 / beatsPerSample);
-                int32 humanizeSamples = 0;
-                if (humanize > 0.0f) {
-                    uint32_t hr = rng ^ 0xFACE7777u ^ (uint32_t)(styleIdx * 99991u);
-                    float ratio = ((float)(mm::xorshift32(hr) % 2001) / 2000.f - 0.5f) * 2.0f;
-                    humanizeSamples = (int32)std::round(
-                        ratio * humanize * slotBeats * 0.25 / beatsPerSample);
-                }
-                int32 styleOffset = std::max((int32)0,
-                    std::min((int32)nframes - 1,
-                             sampleOffset + retardSamples + humanizeSamples));
-
-
-                // own density via the pattern / chord layout. Gating them
-                // with the global Density knob would punch random holes in
-                // the rhythm, which is exactly the "pauses gÃªnantes" the
-                // user reported. Density is therefore only applied to the
-                // melodic styles (MÃ©lodie / Harpe / Basse / Marimba).
-                if (style != 3 && style != 5) {
-                    double roll = static_cast<double>(mm::xorshift32(rng))
-                                / static_cast<double>(0xFFFFFFFFu);
-                    // Strong beats (beat 1/3): floor at 65%, reaches 100% at max density.
-                    // Downbeats (all beat onsets): start firing at Density >= 25%.
-                    // Off-beats (subdivisions): start firing at Density >= 55%.
-                    double effDensity;
-                    if (isStrong) {
-                        effDensity = 0.65 + 0.35 * sDens;
-                    } else if (isDown) {
-                        effDensity = (sDens > 0.25) ? (sDens - 0.25) / 0.75 : 0.0;
-                    } else {
-                        effDensity = (sDens > 0.55) ? (sDens - 0.55) / 0.45 : 0.0;
-                    }
-                    if (roll > effDensity) continue;
-                } else {
-                    // Still consume one RNG step so the velocity humanizer
-                    // below stays seeded the same way for all styles.
-                    mm::xorshift32(rng);
-                }
-
-                // Velocity roll, also per style.
-                uint32_t velRng = rng;
-                float baseVelShared = 0.7f + 0.25f * (
-                    static_cast<float>(mm::xorshift32(velRng))
-                    / static_cast<float>(0xFFFFFFFFu));
-                if (baseVelShared > 1.f) baseVelShared = 1.f;
-
-                // Generate one note per held trigger key.
-                // CHORD MODE: when 2+ trigger notes are held simultaneously,
-                // analyse them as a chord and use the detected harmonic context
-                // (root, mode, progression) for ALL styles — instead of naively
-                // transposing the same melody N times (which sounds chaotic).
-                // Single-note trigger keeps the original behaviour (key = trigger pitch).
-                mm::ChordContext chordCtx{-1, -1, -1};
-                if (triggerCount >= 2) {
-                    int pitches[8];
-                    for (int ti = 0; ti < triggerCount; ++ti)
-                        pitches[ti] = triggerStack[ti].pitch;
-                    chordCtx = mm::detect_chord(pitches, triggerCount);
-                }
-
-                // When in chord mode, generate one voice (not N duplicates).
-                int effectiveTriggers = (chordCtx.root >= 0) ? 1 : triggerCount;
-
-                for (int ti = 0; ti < effectiveTriggers; ++ti) {
-                    // Drums and Piano-chords don't follow trigger pitch â€“
-                    // they only need to fire once per slot regardless of
-                    // how many MIDI keys are held.
-                    if ((style == 3 || style == 5) && ti > 0) continue;
-                    // Build per-trigger params: take this style's params, then
-                    // overwrite Key/Octave from the trigger pitch (and from
-                    // chord detection or auto-key detection if active).
-                    double trigParams[mm::kParamCount];
-                    std::copy(sp, sp + mm::kParamCount, trigParams);
-                    // GUI Octave knob = offset relative to the trigger note's octave.
-                    // Param stores 3-6, default=4 (→ +0). So offset = guiOct - 4.
-                    int guiOctOffset = (int)std::round(sp[mm::kParamOctave]) - 4;
-                    if (chordCtx.root >= 0) {
-                        // Chord mode: the detected root sets the KEY (tonal centre),
-                        // but the MODE knob in the GUI stays as the user's colour choice.
-                        // Example: C+E+G (major triad) + Mode=Lydien → C Lydien,
-                        // the #4 (F#) is the added colour note. Only the progression
-                        // is suggested by the chord quality (it fits that harmony best).
-                        int lowestPitch = triggerStack[0].pitch;
-                        for (int ti2 = 1; ti2 < triggerCount; ++ti2)
-                            if (triggerStack[ti2].pitch < lowestPitch)
-                                lowestPitch = triggerStack[ti2].pitch;
-                        trigParams[mm::kParamKey]  = (double)chordCtx.root;
-                        // kParamMode is NOT overridden — GUI value (sp[kParamMode]) is kept.
-                        int oct = (lowestPitch / 12) - 1 + guiOctOffset;
-                        trigParams[mm::kParamOctave] = (double)std::clamp(oct, 3, 6);
-                    } else {
-                        // Single-note mode: trigger pitch + GUI octave offset.
-                        trigParams[mm::kParamKey] = (double)(triggerStack[ti].pitch % 12);
-                        int oct = (triggerStack[ti].pitch / 12) - 1 + guiOctOffset;
-                        trigParams[mm::kParamOctave] = (double)std::clamp(oct, 3, 6);
-                    }
-                    if (detectedKey >= 0 && chordCtx.root < 0) {
-                        // Auto-key only applies in single-note mode.
-                        trigParams[mm::kParamKey]  = (double)detectedKey;
-                        trigParams[mm::kParamMode] = (double)detectedMode;
-                    }
-                    // Effective progression: chord-detected overrides style setting.
-                    int effectiveProg = (chordCtx.prog >= 0)
-                        ? chordCtx.prog
-                        : sProg;
-                    // Vary pitch rng per trigger so voices aren't identical
-                    uint32_t trigRng = rng ^ (uint32_t)(ti * 1234567u + styleIdx * 2654435761u + 1u);
-                    if (!trigRng) trigRng = 1;
-                    mm::xorshift32(trigRng);
-
-                    // Build the list of voices to emit for this slot. Most
-                    // styles produce a single pitch; Piano emits a 3-note
-                    // chord (+optional melody) and Percussion can emit up
-                    // to 3 simultaneous drums from the active rhythm.
-                    StyleVoices voices;
-                    voicesForStyle(style, trigParams,
-                        slot + (int64_t)(ti * 7919) + (int64_t)(styleIdx * 104729),
-                        effectiveProg,
-                        pianoMelodyPerStyle[styleIdx],
-                        pianoChordPerStyle[styleIdx],
-                        percRhythmPerStyle[styleIdx],
-                        voices);
-                    if (voices.count == 0) continue;
-
-                    for (int vi = 0; vi < voices.count; ++vi) {
-                        int16_t pitch = voices.pitches[vi];
-                        float velocity;
-                        if (style == 3) {
-                            // Drum patterns already encode their own accents
-                            // (kick = 110, ghost snare = 40 â€¦). Re-applying
-                            // velForStyle's strong/weak-beat accent would
-                            // squash that character and make every rhythm
-                            // sound the same. Use the pattern's velocity
-                            // directly + a tiny seed-driven humanization.
-                            uint32_t hRng = rng ^ (uint32_t)(vi * 2654435761u + 0x9E37u);
-                            if (!hRng) hRng = 1;
-                            float jitter = ((float)(mm::xorshift32(hRng) % 1000) / 1000.f - 0.5f) * 0.12f;
-                            velocity = voices.vels[vi] * (1.0f + jitter);
-                        } else {
-                            velocity = velForStyle(style, slot, sp, baseVelShared)
-                                     * voices.vels[vi];
-                        }
-                        if (velocity > 1.f) velocity = 1.f;
-                        if (velocity < 0.05f) velocity = 0.05f;
-                        // Apply section envelope.
-                        velocity *= sectionVolumeRamp;
-                        if (velocity > 1.f) velocity = 1.f;
-                        if (velocity < 0.0f) velocity = 0.0f;
-                        int32 noteId  = nextNoteId++;
-                    // Fixed MIDI channel per style for multi-timbral hosts (e.g. Omnisphere).
-                    int16 channel = (int16)styleIdx;  // one fixed channel per style (0=Voix..5=Piano)
-
-                    if (outEvents) {
-                        Event on{};
-                        on.type              = Event::kNoteOnEvent;
-                        on.sampleOffset      = styleOffset;
-                        on.noteOn.channel    = channel;
-                        on.noteOn.pitch      = static_cast<int16>(pitch);
-                        on.noteOn.velocity   = velocity;
-                        on.noteOn.noteId     = noteId;
-                        outEvents->addEvent(on);
-                    }
-                    if (ti == 0 && style == getStyleType()) {
-                        uint32_t h = noteHistHead.fetch_add(1, std::memory_order_relaxed);
-                        noteHist[h % kNoteHistSize] = pitch;
-                    }
-
-                    // Schedule the corresponding note-off.
-                    double  noteBeats = noteLenForStyle(style, slotBeats, sNL);
-                    if (style != 3) {
-                        // Small random variation around the base length (±30% max).
-                        // Keep it relative so NoteLen=100% stays long.
-                        uint32_t lenRng = rng ^ 0xA5A5u ^ (uint32_t)(styleIdx * 13);
-                        uint32_t r = mm::xorshift32(lenRng);
-                        if      (isStrong && (r % 5) == 0) noteBeats *= 1.40;
-                        else if (isStrong && (r % 7) == 0) noteBeats *= 1.80;
-                        else if (!isDown  && (r % 6) == 0) noteBeats *= 0.65;
-                    }
-                    int64_t offSample = static_cast<int64_t>(styleOffset)
-                                      + static_cast<int64_t>(
-                                            std::round(noteBeats / beatsPerSample));
-                    if (offSample <= styleOffset) offSample = styleOffset + 1;
-
-                    const bool isPerc = (style == 3);
-                    triggerVoice(pitch, velocity,
-                        offSample < (int64_t)nframes ? offSample : -1, isPerc, noteId,
-                        styleIdx);
-
-                    if (recMtx.try_lock()) {
-                        if (recNotes.size() < 65536)
-                            recNotes.push_back({slotBeat - recStartBeat, noteBeats, pitch, velocity, (uint8_t)style});
-                        recMtx.unlock();
-                    }
-
-                    if (offSample < static_cast<int64_t>(nframes)) {
-                        if (outEvents) {
-                            Event off{};
-                            off.type             = Event::kNoteOffEvent;
-                            off.sampleOffset     = static_cast<int32>(offSample);
-                            off.noteOff.channel  = channel;
-                            off.noteOff.pitch    = static_cast<int16>(pitch);
-                            off.noteOff.noteId   = noteId;
-                            off.noteOff.velocity = 0.f;
-                            outEvents->addEvent(off);
-                        }
-                    } else {
-                        activeNotes.push_back({
-                            static_cast<int16_t>(pitch), channel, noteId,
-                            offSample - static_cast<int64_t>(nframes)
-                        });
-                    }
-                    } // end voice loop
-                } // end trigger loop
-            } // end style loop
-        }
-
-        // -- Render internal oscillator voices to audio output --
-        renderVoices(data.outputs, data.numOutputs, nframes);
-
-        return kResultOk;
-    }
+    tresult PLUGIN_API process(ProcessData& data) override;
 
     // -------------------------------------------------------------------------
     // State persistence
@@ -912,6 +338,32 @@ public:
         // v2.8: section + per-style start bar.
         s.writeInt32(currentSection.load(std::memory_order_relaxed));
         for (int st = 0; st < kStyleCount; ++st) s.writeInt32(startBarPerStyle[st]);
+        // v2.9: user-pinned notes (hand-drawn in the piano roll).
+        // Format per note: beatOn(double) beatLen(double) pitch(int32) vel(float) style(int32)
+        {
+            std::lock_guard<std::mutex> lk(recMtx);
+            s.writeInt32(static_cast<int32>(pinnedNotes.size()));
+            for (auto& n : pinnedNotes) {
+                s.writeDouble(n.beatOn);
+                s.writeDouble(n.beatLen);
+                s.writeInt32(static_cast<int32>(n.pitch));
+                s.writeFloat(n.vel);
+                s.writeInt32(static_cast<int32>(n.style));
+            }
+        }
+        // v3.0: mute + solo bitmasks
+        s.writeInt32(static_cast<int32>(muteStyles.load(std::memory_order_relaxed)));
+        s.writeInt32(static_cast<int32>(soloStyles.load(std::memory_order_relaxed)));
+        // v3.1: per-style JAM mode
+        for (int st = 0; st < kStyleCount; ++st) s.writeInt32(jamPerStyle[st] ? 1 : 0);
+        // v3.2: per-style FX params
+        for (int st = 0; st < kStyleCount; ++st) {
+            auto& p = fxParamsPerStyle[st];
+            s.writeInt32(p.chorusOn ? 1 : 0); s.writeFloat(p.chorusRate); s.writeFloat(p.chorusDepth); s.writeFloat(p.chorusMix);
+            s.writeInt32(p.delayOn  ? 1 : 0); s.writeFloat(p.delayTime);  s.writeFloat(p.delayFb);     s.writeFloat(p.delayMix);
+            s.writeInt32(p.reverbOn ? 1 : 0); s.writeFloat(p.reverbSize); s.writeFloat(p.reverbDamp);  s.writeFloat(p.reverbMix);
+            s.writeInt32(p.noiseOn  ? 1 : 0); s.writeFloat(p.noiseLevel); s.writeFloat(p.noiseFlutter);s.writeFloat(p.noiseTone);
+        }
         return kResultOk;
     }
 
@@ -947,7 +399,7 @@ public:
             for (int sti = 0; sti < kStyleCount; ++sti) {
                 int32 sp = 0;
                 if (s.readInt32(sp))
-                    sfPresetIdxPerStyle[sti] = std::clamp((int)sp, 0, kSfPresetCount[sti] - 1);
+                    sfPresetIdxPerStyle[sti] = std::clamp((int)sp, 0, std::max(1, effectivePresetCount(sti)) - 1);
                 float sv = 0.85f;
                 if (s.readFloat(sv))
                     sfVolumePerStyle[sti] = std::clamp(sv, 0.0f, 1.5f);
@@ -999,6 +451,49 @@ public:
                   }
               }
             }
+            // v2.9: user-pinned notes. Best-effort.
+            {
+                int32 nc = 0;
+                if (s.readInt32(nc) && nc > 0 && nc <= 65536) {
+                    std::lock_guard<std::mutex> lk(recMtx);
+                    pinnedNotes.clear();
+                    for (int32 ni = 0; ni < nc; ++ni) {
+                        double bo = 0.0, bl = 0.25;
+                        int32  p = 60, stl = 0;
+                        float  v = 0.8f;
+                        if (!s.readDouble(bo)) break;
+                        if (!s.readDouble(bl)) break;
+                        if (!s.readInt32(p))   break;
+                        if (!s.readFloat(v))   break;
+                        if (!s.readInt32(stl)) break;
+                        pinnedNotes.push_back({
+                            bo, bl,
+                            static_cast<int16_t>(std::clamp((int)p, 0, 127)),
+                            std::clamp(v, 0.0f, 1.0f),
+                            static_cast<uint8_t>(std::clamp((int)stl, 0, 5))
+                        });
+                    }
+                    recNotes  = pinnedNotes;
+                    audioNotes = pinnedNotes;
+                }
+            }
+            // v3.0: mute + solo bitmasks. Best-effort.
+            { int32 m = 0; if (s.readInt32(m)) muteStyles.store(static_cast<uint32_t>(m), std::memory_order_relaxed); }
+            { int32 m = 0; if (s.readInt32(m)) soloStyles.store(static_cast<uint32_t>(m), std::memory_order_relaxed); }
+            // v3.1: per-style JAM mode. Best-effort.
+            for (int sti = 0; sti < kStyleCount; ++sti) {
+                int32 jm = 0; if (s.readInt32(jm)) jamPerStyle[sti] = (jm != 0);
+            }
+            // v3.2: per-style FX params. Best-effort.
+            for (int sti = 0; sti < kStyleCount; ++sti) {
+                auto& p = fxParamsPerStyle[sti];
+                int32 t = 0; float f = 0.f;
+                if (s.readInt32(t)) p.chorusOn = (t != 0); if (s.readFloat(f)) p.chorusRate = f; if (s.readFloat(f)) p.chorusDepth = f; if (s.readFloat(f)) p.chorusMix = f;
+                if (s.readInt32(t)) p.delayOn  = (t != 0); if (s.readFloat(f)) p.delayTime  = f; if (s.readFloat(f)) p.delayFb    = f; if (s.readFloat(f)) p.delayMix  = f;
+                if (s.readInt32(t)) p.reverbOn = (t != 0); if (s.readFloat(f)) p.reverbSize = f; if (s.readFloat(f)) p.reverbDamp = f; if (s.readFloat(f)) p.reverbMix  = f;
+                if (s.readInt32(t)) p.noiseOn  = (t != 0); if (s.readFloat(f)) p.noiseLevel = f; if (s.readFloat(f)) p.noiseFlutter = f; if (s.readFloat(f)) p.noiseTone = f;
+            }
+            applyAllFxParams();
             int active = std::clamp((int)st, 0, kStyleCount - 1);
             styleType.store(active, std::memory_order_relaxed);
             loadStyleParams(active);
@@ -1063,12 +558,145 @@ private:
     float    humanizePerStyle[6]    = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
     // Per-style groove retard: 0=on-grid, 1=max retard (fraction of one slot).
     float    retardPerStyle[6]      = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
+
+    // -------------------------------------------------------------------------
+    // Per-style FX (chorus / delay / reverb / cassette noise)
+    // -------------------------------------------------------------------------
+    struct FxParams {
+        // Chorus
+        bool  chorusOn   = false;
+        float chorusRate = 0.7f;   // Hz
+        float chorusDepth = 5.0f;  // ms
+        float chorusMix  = 0.5f;   // 0..1
+        // Delay
+        bool  delayOn    = false;
+        float delayTime  = 350.0f; // ms
+        float delayFb    = 0.40f;  // 0..0.92
+        float delayMix   = 0.30f;  // 0..1
+        // Reverb
+        bool  reverbOn   = false;
+        float reverbSize = 0.55f;  // 0..1
+        float reverbDamp = 0.30f;  // 0..1
+        float reverbMix  = 0.25f;  // 0..1
+        // Cassette noise
+        bool  noiseOn    = false;
+        float noiseLevel  = 0.10f; // 0..1
+        float noiseFlutter = 0.50f;// 0..1
+        float noiseTone   = 0.40f; // 0..1
+    };
+    FxParams fxParamsPerStyle[6]{};
+    fx::FxChain fxChainPerStyle[6]{};
+    std::atomic<bool> fxParamsDirty{true};
+    std::mutex fxMutex;
+
+    // --- Live SoundFont preview (in-memory, no disk write) ---
+    // Holds the raw SF2 bytes + loaded TSF synth for the current preview.
+    // Replaced atomically under sfMutex when the user tweaks Maker params.
+    struct LiveSf {
+        std::vector<uint8_t> data;  // raw SF2 bytes (keeps buffer alive for tsf)
+        tsf*                 synth = nullptr;
+    };
+    LiveSf liveSfPerStyle[6]; // 6 == kStyleCount (declared later in the class)
+
+    // External SF2 loaded by the user ("Charger SF2...").
+    // Bytes bruts du fichier original — le delta est appliqué à une copie avant chargement.
+    std::vector<uint8_t> externalSf2PerStyle[6];
+    std::wstring         externalSf2PathPerStyle[6]; // chemin affiché dans l'UI
+    sfed::Sf2Delta       sf2DeltaPerStyle[6];        // delta par style
+
+    // Recharge le synth depuis un SF2 externe (déjà chargé dans externalSf2PerStyle[style])
+    // en appliquant le delta courant. Retourne true en cas de succès.
+    bool reloadExternalSf(int style) {
+        if (style < 0 || style >= 6) return false;
+        if (externalSf2PerStyle[style].empty()) return false;
+        // Copier les bytes bruts, appliquer le delta, charger
+        std::vector<uint8_t> bytes = externalSf2PerStyle[style];
+        sfed::applyDelta(bytes, sf2DeltaPerStyle[style]);
+        tsf* newSynth = tsf_load_memory(bytes.data(), (int)bytes.size());
+        if (!newSynth) return false;
+        tsf_set_output(newSynth, TSF_STEREO_INTERLEAVED, (int)sampleRate, -3.0f);
+        tsf_set_max_voices(newSynth, 48);
+        int ch = kSfChannelOf(style);
+        tsf_channel_set_presetnumber(newSynth, ch, 0, 0);
+        tsf_channel_set_volume(newSynth, ch, sfVolumePerStyle[style]);
+        tsf* oldSynth = nullptr;
+        {
+            std::lock_guard<std::mutex> lk(sfMutex);
+            if (sfSynth[style]) tsf_channel_sounds_off_all(sfSynth[style], ch);
+            oldSynth = liveSfPerStyle[style].synth;
+            liveSfPerStyle[style].data  = std::move(bytes);
+            liveSfPerStyle[style].synth = newSynth;
+            sfSynth[style] = newSynth;
+        }
+        if (oldSynth) tsf_close(oldSynth);
+        return true;
+    }
+
+    // Generate an SF2 in memory from `cfg` and hot-swap sfSynth[style].
+    // Safe to call from the UI thread. Acquires sfMutex only for the pointer swap.
+    // Returns true on success.
+    bool reloadLiveSf(int style, const sfm::SfmConfig& cfg) {
+        if (style < 0 || style >= 6) return false;
+        std::vector<uint8_t> bytes = sfm::SfmGenerator::generateToMemory(cfg);
+        if (bytes.empty()) return false;
+
+        tsf* newSynth = tsf_load_memory(bytes.data(), (int)bytes.size());
+        if (!newSynth) return false;
+        tsf_set_output(newSynth, TSF_STEREO_INTERLEAVED, (int)sampleRate, -3.0f);
+        tsf_set_max_voices(newSynth, 24);
+        int ch = kSfChannelOf(style);
+        tsf_channel_set_presetnumber(newSynth, ch, 0, 0);
+        tsf_channel_set_volume(newSynth, ch, sfVolumePerStyle[style]);
+
+        // Swap under sfMutex — audio thread holds this only for render calls.
+        tsf* oldSynth = nullptr;
+        {
+            std::lock_guard<std::mutex> lk(sfMutex);
+            if (sfSynth[style]) tsf_channel_sounds_off_all(sfSynth[style], ch);
+            oldSynth = liveSfPerStyle[style].synth;
+            liveSfPerStyle[style].data  = std::move(bytes);
+            liveSfPerStyle[style].synth = newSynth;
+            sfSynth[style] = newSynth;
+        }
+        if (oldSynth) tsf_close(oldSynth);
+        return true;
+    }
+
+    void applyFxParamsToChain(int s) {
+        if (s < 0 || s >= 6) return;
+        const FxParams& p = fxParamsPerStyle[s];
+        fx::FxChain& c = fxChainPerStyle[s];
+        c.chorus.enabled = p.chorusOn;
+        c.chorus.setRate(p.chorusRate);
+        c.chorus.setDepth(p.chorusDepth);
+        c.chorus.setMix(p.chorusMix);
+        c.del.enabled = p.delayOn;
+        c.del.setTime(p.delayTime);
+        c.del.setFeedback(p.delayFb);
+        c.del.setMix(p.delayMix);
+        c.reverb.enabled = p.reverbOn;
+        c.reverb.setSize(p.reverbSize);
+        c.reverb.setDamp(p.reverbDamp);
+        c.reverb.setMix(p.reverbMix);
+        c.noise.enabled = p.noiseOn;
+        c.noise.setLevel(p.noiseLevel);
+        c.noise.setFlutter(p.noiseFlutter);
+        c.noise.setTone(p.noiseTone);
+    }
+    void applyAllFxParams() {
+        for (int s = 0; s < 6; ++s) applyFxParamsToChain(s);
+    }
     // Global arrangement section.
     std::atomic<int> currentSection{kSecVerse};
     float sectionVolumeRamp = 1.0f;  // audio-thread-only fader
     bool  introFadeDone = false;     // true once the Intro fade has completed once
     // Per-style note delay in bars before instrument begins.
     int  startBarPerStyle[6] = { 0, 0, 0, 0, 0, 0 };
+
+    // Per-style JAM mode: when true, the instrument follows other instruments
+    // rather than leading. Style 0 (Mélodie): fires on perc grid steps, uses
+    // arpège chord-tone pitches instead of corpus phrase degrees.
+    bool jamPerStyle[6] = { false, false, false, false, false, false };
 
 public:
     // -------- Per-tab lock toggles --------------------------------------
@@ -1166,6 +794,27 @@ private:
     std::atomic<float> lastBpm{120.0f};
     std::atomic<double> lastBeatPos{0.0}; // updated every process() block for piano roll
 
+    // ---- Lock-free GUI -> audio note queue ----
+    // GUI pushes note previews; audio thread drains and fires them.
+    struct GuiNote { int16_t pitch; float vel; bool noteOff; int style; };
+    static constexpr int kGuiQueueSize = 32;
+    GuiNote  guiNoteRing[kGuiQueueSize]{};
+    std::atomic<uint32_t> guiNoteWrite{0};
+    std::atomic<uint32_t> guiNoteRead{0};
+    void guiNoteOn(int pitch, float vel, int style) {
+        uint32_t w = guiNoteWrite.load(std::memory_order_relaxed);
+        uint32_t r = guiNoteRead .load(std::memory_order_acquire);
+        if (w - r >= (uint32_t)kGuiQueueSize) return;
+        guiNoteRing[w % kGuiQueueSize] = { (int16_t)pitch, vel, false, style };
+        guiNoteWrite.store(w + 1, std::memory_order_release);
+    }
+    void guiNoteOff(int pitch, int style) {
+        uint32_t w = guiNoteWrite.load(std::memory_order_relaxed);
+        uint32_t r = guiNoteRead .load(std::memory_order_acquire);
+        if (w - r >= (uint32_t)kGuiQueueSize) return;
+        guiNoteRing[w % kGuiQueueSize] = { (int16_t)pitch, 0.f, true, style };
+        guiNoteWrite.store(w + 1, std::memory_order_release);
+    }
     // Trigger note stack (from piano roll) â€“ up to 8 simultaneous held keys
     struct TriggerNote { int16_t pitch; int32 noteId; double beatTimeOn; };
     static constexpr int kMaxTriggers = 8;
@@ -1178,6 +827,12 @@ private:
     struct RecordedNote { double beatOn; double beatLen; int16_t pitch; float vel; uint8_t style; };
     std::mutex             recMtx;
     std::vector<RecordedNote> recNotes;
+    // pinnedNotes: user-drawn notes (never cleared by transport restart).
+    // Protected by recMtx for GUI<->audio exchange.
+    std::vector<RecordedNote> pinnedNotes;
+    // audioNotes: audio-thread-private copy of pinnedNotes (no lock needed).
+    // Refreshed from pinnedNotes on each transport restart.
+    std::vector<RecordedNote> audioNotes;
     double                 recStartBeat = 0.0;
 
     // Waveform: 0=Sine 1=Triangle 2=Saw 3=Square
@@ -1231,6 +886,38 @@ private:
     void toggleStyleEnabled(int s) { setStyleEnabled(s, !isStyleEnabled(s)); }
     uint32_t getEnabledMask() const { return enabledStyles.load(std::memory_order_relaxed); }
     void setEnabledMask(uint32_t m) { enabledStyles.store(m, std::memory_order_relaxed); }
+
+    // ---- Mute / Solo bitmasks ------------------------------------------
+    // muteStyles: bit i set → style i is muted (silenced).
+    // soloStyles: any bit set → only styles with their bit set are heard.
+    // Solo takes priority over mute. Both are per-style, not per-trigger.
+    std::atomic<uint32_t> muteStyles{0u};
+    std::atomic<uint32_t> soloStyles{0u};
+    bool isStyleMuted(int s) const {
+        return (muteStyles.load(std::memory_order_relaxed) >> (s & 31)) & 1u;
+    }
+    bool isStyleSoloed(int s) const {
+        return (soloStyles.load(std::memory_order_relaxed) >> (s & 31)) & 1u;
+    }
+    // Returns true if style s should produce audio this block.
+    // Disabled (OFF) instruments are always silent, regardless of M/S state.
+    bool isStyleAudible(int s) const {
+        if (!isStyleEnabled(s)) return false;                  // OFF overrides everything
+        uint32_t solo = soloStyles.load(std::memory_order_relaxed);
+        if (solo != 0u) return (solo >> (s & 31)) & 1u;       // solo active: only solos
+        return !isStyleMuted(s);                               // no solo: respect mute
+    }
+    void toggleMute(int s) {
+        uint32_t cur = muteStyles.load(std::memory_order_relaxed);
+        muteStyles.store(cur ^ (1u << (s & 31)), std::memory_order_relaxed);
+    }
+    void toggleSolo(int s) {
+        uint32_t cur = soloStyles.load(std::memory_order_relaxed);
+        uint32_t bit = 1u << (s & 31);
+        // Solo is exclusive: toggling one clears all others.
+        // If it was already the only solo, clear everything.
+        soloStyles.store((cur == bit) ? 0u : bit, std::memory_order_relaxed);
+    }
 
     // ---- Context-listening (Continue mode) -----------------------------
     // When ON, MMM analyses notes received on the "Context In" bus (and
@@ -1321,68 +1008,377 @@ private:
     // -------------------------------------------------------------------------
     // SoundFont synth (TinySoundFont) â€“ loaded at setupProcessing.
     // -------------------------------------------------------------------------
-    tsf*       sfSynth      = nullptr;
+    tsf*       sfSynth[kStyleCount] = {};  // active TSF per style (alias into sfBank)
+    tsf*       sfBank[2][kStyleCount] = {}; // [0]=GeneralUser, [1]=Midnight Lofi (owners)
     bool       sfReady      = false;
     std::mutex sfMutex;          // serialize tsf_note_on/off vs render
-    // Track per-noteId TSF channel so we can route note-off correctly.
-    struct SfActive { int32 noteId; int16_t pitch; int8_t channel; bool used; };
+    // Track per-noteId TSF style/channel so we can route note-off correctly.
+    struct SfActive { int32 noteId; int16_t pitch; int8_t channel; int8_t styleIdx; bool used; };
     static constexpr int kSfMaxActive = 64;
     SfActive sfActive[kSfMaxActive] = {};
+
+    // -------------------------------------------------------------------------
+    // User-created SoundFonts (procedural, generated by SoundFont Maker tab).
+    // Each entry owns one TSF synth (the SF2 file lives on disk under
+    // %APPDATA%/Midnight/SoundFonts/).  Phase 1: each user SF targets a single
+    // style (default: Piano).  When selected as the active preset for a style,
+    // sfSynth[style] is aliased to userSfs[i].synth.
+    // -------------------------------------------------------------------------
+    struct UserSfEntry {
+        sfm::SfmConfig cfg;
+        std::wstring   sf2Path;        // full path to .sf2 on disk
+        std::wstring   nameWide;       // display name (owns the wchar buffer)
+        int            targetStyle;    // 0..5  (the style whose dropdown lists it)
+        tsf*           synth;          // independent TSF instance (no copy needed)
+    };
+    std::vector<UserSfEntry> userSfs;
+    // Per-style runtime presets, appended after kSfPresetsByStyle[style][0..N-1].
+    // Each entry's `name` points into the matching userSfs[i].nameWide buffer.
+    std::vector<SfPreset>    extraPresetsByStyle[kStyleCount];
+
+    // Effective dropdown size = static catalog + user-injected entries.
+    int effectivePresetCount(int style) const {
+        if (style < 0 || style >= kStyleCount) return 0;
+        return kSfPresetCount[style] + (int)extraPresetsByStyle[style].size();
+    }
+    SfPreset effectivePreset(int style, int idx) const {
+        if (style < 0 || style >= kStyleCount) return {};
+        int staticN = kSfPresetCount[style];
+        if (idx < staticN) return kSfPresetsByStyle[style][idx];
+        int j = idx - staticN;
+        if (j < (int)extraPresetsByStyle[style].size())
+            return extraPresetsByStyle[style][j];
+        return {};
+    }
+    // Map a style+presetIdx onto the matching UserSfEntry, or nullptr.
+    UserSfEntry* findUserSfFor(int style, int idx) {
+        int staticN = kSfPresetCount[style];
+        if (idx < staticN) return nullptr;
+        int j = idx - staticN;
+        if (j < 0 || j >= (int)extraPresetsByStyle[style].size()) return nullptr;
+        // Linear scan: fast enough since user typically has <10 SFs.
+        const SfPreset& target = extraPresetsByStyle[style][j];
+        for (auto& u : userSfs) {
+            if (u.targetStyle == style && u.nameWide.c_str() == target.name)
+                return &u;
+        }
+        return nullptr;
+    }
+
 
     // GM program per style (channel 9 reserved for drums).
     // 0 Piano (MÃ©lodie), 46 Harp, 33 E-Bass, drums, 12 Marimba, 0 Piano (chord)
     static constexpr int kSfChannelOf(int style) {
-        return style == 3 ? 9 : style; // drums on ch 9, others on their style index
+        // Each style gets its own TSF instance; use ch 0 within it, except drums (ch 9).
+        return style == 3 ? 9 : 0;
     }
 
     void loadSoundFont() {
-        if (sfReady && sfSynth) {
-            // Just update sample rate.
-            tsf_set_output(sfSynth, TSF_STEREO_INTERLEAVED, (int)sampleRate, 0.0f);
+        if (sfReady && sfSynth[0]) {
+            for (int s = 0; s < 6; ++s)
+                if (sfSynth[s]) tsf_set_output(sfSynth[s], TSF_STEREO_INTERLEAVED, (int)sampleRate, 0.0f);
             return;
         }
-        // Locate the bundled SF2: <bundle>/Contents/Resources/GeneralUser.sf2
+        // Locate the bundled SF2s:
+        //   <bundle>/Contents/Resources/GeneralUser.sf2          (mandatory)
+        //   <bundle>/Contents/Resources/Midnight/midnight_lofi.sf2 (optional)
         wchar_t modPath[MAX_PATH] = {};
         if (!GetModuleFileNameW(g_hInst, modPath, MAX_PATH)) return;
-        // Strip filename â†’ <bundle>/Contents/x86_64-win
         for (int i = (int)wcslen(modPath) - 1; i >= 0; --i) {
             if (modPath[i] == L'\\' || modPath[i] == L'/') { modPath[i] = 0; break; }
         }
-        std::wstring sfPath = std::wstring(modPath) + L"\\..\\Resources\\GeneralUser.sf2";
-        // Convert to UTF-8 for tsf_load_filename (which uses fopen).
-        char sfPath8[MAX_PATH * 4] = {};
-        WideCharToMultiByte(CP_ACP, 0, sfPath.c_str(), -1,
-                            sfPath8, sizeof(sfPath8), nullptr, nullptr);
-        sfSynth = tsf_load_filename(sfPath8);
-        if (!sfSynth) return;
-        tsf_set_output(sfSynth, TSF_STEREO_INTERLEAVED, (int)sampleRate, -3.0f);
-        tsf_set_max_voices(sfSynth, 64);
-        // Apply each style's selected preset and per-style volume.
-        for (int s = 0; s < 6; ++s) {
-            int ch = kSfChannelOf(s);
+        std::wstring resDir = std::wstring(modPath) + L"\\..\\Resources";
+
+        auto loadBank = [&](int bankIdx, const std::wstring& sfPath) -> bool {
+            char sfPath8[MAX_PATH * 4] = {};
+            WideCharToMultiByte(CP_ACP, 0, sfPath.c_str(), -1,
+                                sfPath8, sizeof(sfPath8), nullptr, nullptr);
+            tsf* base = tsf_load_filename(sfPath8);
+            if (!base) return false;
+            tsf_set_output(base, TSF_STEREO_INTERLEAVED, (int)sampleRate, -3.0f);
+            tsf_set_max_voices(base, 32);
+            sfBank[bankIdx][0] = base;
+            for (int s = 1; s < kStyleCount; ++s) {
+                tsf* c = tsf_copy(base);
+                if (!c) return false;
+                tsf_set_output(c, TSF_STEREO_INTERLEAVED, (int)sampleRate, -3.0f);
+                tsf_set_max_voices(c, 32);
+                sfBank[bankIdx][s] = c;
+            }
+            return true;
+        };
+
+        // GeneralUser is required.
+        if (!loadBank(0, resDir + L"\\GeneralUser.sf2")) {
+            closeSoundFont();
+            return;
+        }
+        // Midnight Lofi is optional â€“ keep going if missing.
+        loadBank(1, resDir + L"\\Midnight\\midnight_lofi.sf2");
+
+        // Bind active synth per style based on each style's currently selected preset.
+        for (int s = 0; s < kStyleCount; ++s) {
             int idx = std::clamp(sfPresetIdxPerStyle[s], 0, kSfPresetCount[s] - 1);
             const SfPreset& p = kSfPresetsByStyle[s][idx];
-            tsf_channel_set_presetnumber(sfSynth, ch, p.program, p.bank == 128 ? 1 : 0);
-            tsf_channel_set_volume(sfSynth, ch, sfVolumePerStyle[s]);
+            int src = (p.source == 1 && sfBank[1][s]) ? 1 : 0;
+            sfSynth[s] = sfBank[src][s];
+            int ch = kSfChannelOf(s);
+            tsf_channel_set_presetnumber(sfSynth[s], ch, p.program, p.bank == 128 ? 1 : 0);
+            tsf_channel_set_volume(sfSynth[s], ch, sfVolumePerStyle[s]);
         }
         sfReady = true;
+
+        // ---- User-procedural SoundFonts (Phase 1) -------------------------
+        // Create the default "Lofi Piano (Custom)" if the user folder is
+        // empty, then scan the folder and register every found SF as a
+        // runtime preset on its target style.
+        seedDefaultUserSf();
+        scanAndLoadUserSf();
+        // Re-apply per-style bindings: a saved preset index might point into
+        // the freshly-loaded user range now.
+        for (int s = 0; s < kStyleCount; ++s) {
+            int idx = std::clamp(sfPresetIdxPerStyle[s], 0, effectivePresetCount(s) - 1);
+            sfPresetIdxPerStyle[s] = idx;
+            applyPresetForStyle(s, idx);
+        }
     }
 
     void closeSoundFont() {
-        if (sfSynth) { tsf_close(sfSynth); sfSynth = nullptr; }
+        // Close copies first (1..N-1), then bases (index 0).
+        for (int k = 0; k < 2; ++k) {
+            for (int s = kStyleCount - 1; s >= 0; --s) {
+                if (sfBank[k][s]) { tsf_close(sfBank[k][s]); sfBank[k][s] = nullptr; }
+            }
+        }
+        // User SFs (each owns its own TSF).
+        for (auto& u : userSfs) {
+            if (u.synth) { tsf_close(u.synth); u.synth = nullptr; }
+        }
+        userSfs.clear();
+        // Live preview SFs (in-memory buffers).
+        for (int s = 0; s < kStyleCount; ++s) {
+            if (liveSfPerStyle[s].synth) {
+                tsf_close(liveSfPerStyle[s].synth);
+                liveSfPerStyle[s].synth = nullptr;
+            }
+            liveSfPerStyle[s].data.clear();
+        }
+        for (int s = 0; s < kStyleCount; ++s) {
+            extraPresetsByStyle[s].clear();
+            sfSynth[s] = nullptr;
+        }
         sfReady = false;
     }
 
+    // -------------------------------------------------------------------------
+    // User SoundFont folder management
+    // Layout: %APPDATA%/Midnight/SoundFonts/<name>.sf2
+    //         %APPDATA%/Midnight/SoundFonts/<name>.cfg  (binary SfmConfig)
+    // -------------------------------------------------------------------------
+    static std::wstring getUserSfFolderW() {
+        wchar_t appData[MAX_PATH] = {};
+        if (FAILED(SHGetFolderPathW(nullptr, CSIDL_APPDATA, nullptr,
+                                    SHGFP_TYPE_CURRENT, appData))) {
+            return L"";
+        }
+        std::wstring p = std::wstring(appData) + L"\\Midnight\\SoundFonts";
+        // Create directories if missing (best-effort).
+        std::wstring midnight = std::wstring(appData) + L"\\Midnight";
+        CreateDirectoryW(midnight.c_str(), nullptr);
+        CreateDirectoryW(p.c_str(),        nullptr);
+        return p;
+    }
+
+    static std::string wideToUtf8(const std::wstring& w) {
+        if (w.empty()) return {};
+        int n = WideCharToMultiByte(CP_UTF8, 0, w.c_str(), -1, nullptr, 0, nullptr, nullptr);
+        std::string s(n > 0 ? n - 1 : 0, '\0');
+        if (n > 1) WideCharToMultiByte(CP_UTF8, 0, w.c_str(), -1, s.data(), n, nullptr, nullptr);
+        return s;
+    }
+    static std::wstring utf8ToWide(const std::string& s) {
+        if (s.empty()) return {};
+        int n = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, nullptr, 0);
+        std::wstring w(n > 0 ? n - 1 : 0, L'\0');
+        if (n > 1) MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, w.data(), n);
+        return w;
+    }
+
+    // Tiny binary format for SfmConfig (next to the .sf2):
+    //   magic "SFMC" + version u32 + nameLen u32 + name bytes
+    //   + synthType u32 + 6x float (a/d/s/r, modIndex, modDecay)
+    //   + lowNote/highNote/step i32 + gain float + targetStyle i32
+    static bool writeSfmCfg(const std::wstring& cfgPath,
+                            const sfm::SfmConfig& cfg, int targetStyle) {
+        FILE* f = nullptr;
+        if (_wfopen_s(&f, cfgPath.c_str(), L"wb") != 0 || !f) return false;
+        auto wU32 = [&](uint32_t x){ fwrite(&x, 4, 1, f); };
+        auto wF   = [&](float x)    { fwrite(&x, 4, 1, f); };
+        auto wI32 = [&](int32_t x) { fwrite(&x, 4, 1, f); };
+        const char magic[4] = {'S','F','M','C'};
+        fwrite(magic, 1, 4, f);
+        wU32(1);
+        wU32((uint32_t)cfg.name.size());
+        if (!cfg.name.empty()) fwrite(cfg.name.data(), 1, cfg.name.size(), f);
+        wU32((uint32_t)cfg.synthType);
+        wF(cfg.attack); wF(cfg.decay); wF(cfg.sustain); wF(cfg.release);
+        wF(cfg.modIndex); wF(cfg.modDecay);
+        wI32(cfg.lowNote); wI32(cfg.highNote); wI32(cfg.step);
+        wF(cfg.gain);
+        wI32(targetStyle);
+        fclose(f);
+        return true;
+    }
+    static bool readSfmCfg(const std::wstring& cfgPath,
+                           sfm::SfmConfig& cfg, int& targetStyle) {
+        FILE* f = nullptr;
+        if (_wfopen_s(&f, cfgPath.c_str(), L"rb") != 0 || !f) return false;
+        auto rU32 = [&](uint32_t& x){ return fread(&x, 4, 1, f) == 1; };
+        auto rF   = [&](float& x)    { return fread(&x, 4, 1, f) == 1; };
+        auto rI32 = [&](int32_t& x) { return fread(&x, 4, 1, f) == 1; };
+        char magic[4] = {};
+        if (fread(magic, 1, 4, f) != 4 ||
+            magic[0]!='S'||magic[1]!='F'||magic[2]!='M'||magic[3]!='C') {
+            fclose(f); return false;
+        }
+        uint32_t ver = 0; if (!rU32(ver)) { fclose(f); return false; }
+        uint32_t nlen = 0; if (!rU32(nlen)) { fclose(f); return false; }
+        cfg.name.assign(nlen, '\0');
+        if (nlen && fread(cfg.name.data(), 1, nlen, f) != nlen) { fclose(f); return false; }
+        uint32_t st = 0; rU32(st); cfg.synthType = (sfm::SfmSynth)st;
+        rF(cfg.attack); rF(cfg.decay); rF(cfg.sustain); rF(cfg.release);
+        rF(cfg.modIndex); rF(cfg.modDecay);
+        int32_t lo=0, hi=0, step=0; rI32(lo); rI32(hi); rI32(step);
+        cfg.lowNote = lo; cfg.highNote = hi; cfg.step = step;
+        rF(cfg.gain);
+        int32_t ts = 5; rI32(ts); targetStyle = ts;
+        fclose(f);
+        (void)ver;
+        return true;
+    }
+
+    // Generate (or regenerate) a user SF on disk. Updates registry+TSF.
+    // Returns true on success.
+    bool createOrUpdateUserSf(const sfm::SfmConfig& cfg, int targetStyle) {
+        std::wstring folder = getUserSfFolderW();
+        if (folder.empty()) return false;
+        std::wstring nameW = utf8ToWide(cfg.name);
+        if (nameW.empty()) return false;
+        std::wstring sf2W = folder + L"\\" + nameW + L".sf2";
+        std::wstring cfgW = folder + L"\\" + nameW + L".cfg";
+        std::string  sf2A = wideToUtf8(sf2W);
+        if (!sfm::SfmGenerator::generate(cfg, sf2A)) return false;
+        writeSfmCfg(cfgW, cfg, targetStyle);
+        // If already loaded, replace; else add.
+        for (auto& u : userSfs) {
+            if (u.sf2Path == sf2W) {
+                if (u.synth) { tsf_close(u.synth); u.synth = nullptr; }
+                u.cfg = cfg; u.targetStyle = std::clamp(targetStyle, 0, kStyleCount - 1);
+                u.synth = tsf_load_filename(sf2A.c_str());
+                if (u.synth) {
+                    tsf_set_output(u.synth, TSF_STEREO_INTERLEAVED, (int)sampleRate, -3.0f);
+                    tsf_set_max_voices(u.synth, 24);
+                }
+                rebuildExtraPresets();
+                return true;
+            }
+        }
+        UserSfEntry e;
+        e.cfg = cfg;
+        e.sf2Path = sf2W;
+        e.nameWide = nameW;
+        e.targetStyle = std::clamp(targetStyle, 0, kStyleCount - 1);
+        e.synth = tsf_load_filename(sf2A.c_str());
+        if (e.synth) {
+            tsf_set_output(e.synth, TSF_STEREO_INTERLEAVED, (int)sampleRate, -3.0f);
+            tsf_set_max_voices(e.synth, 24);
+        }
+        userSfs.push_back(std::move(e));
+        rebuildExtraPresets();
+        return true;
+    }
+
+    // Rebuild extraPresetsByStyle[] from current userSfs.
+    // The SfPreset.name fields point into UserSfEntry::nameWide, which is owned
+    // by the entry and lives as long as the userSfs vector slot.
+    void rebuildExtraPresets() {
+        for (int s = 0; s < kStyleCount; ++s) extraPresetsByStyle[s].clear();
+        for (auto& u : userSfs) {
+            int s = std::clamp(u.targetStyle, 0, kStyleCount - 1);
+            SfPreset p;
+            p.name    = u.nameWide.c_str();
+            p.program = 0;
+            p.bank    = 0;
+            p.source  = 2; // 2 = user-generated
+            extraPresetsByStyle[s].push_back(p);
+        }
+    }
+
+    // First-run seed: if the user folder is empty, create one default SF
+    // ("Lofi Piano") so the dropdown shows something out of the box.
+    void seedDefaultUserSf() {
+        std::wstring folder = getUserSfFolderW();
+        if (folder.empty()) return;
+        std::wstring probe = folder + L"\\*.sf2";
+        WIN32_FIND_DATAW fd{};
+        HANDLE h = FindFirstFileW(probe.c_str(), &fd);
+        bool empty = (h == INVALID_HANDLE_VALUE);
+        if (h != INVALID_HANDLE_VALUE) FindClose(h);
+        if (!empty) return;
+        sfm::SfmConfig cfg = sfm::makeDefaultLofiPiano();
+        // Avoid filename clash with the bundled "Lofi Piano" preset.
+        cfg.name = "Lofi Piano (Custom)";
+        createOrUpdateUserSf(cfg, /*targetStyle=*/5); // Piano
+    }
+
+    // Scan the user folder, load each (.sf2 + .cfg) pair into userSfs.
+    void scanAndLoadUserSf() {
+        std::wstring folder = getUserSfFolderW();
+        if (folder.empty()) return;
+        std::wstring probe = folder + L"\\*.cfg";
+        WIN32_FIND_DATAW fd{};
+        HANDLE h = FindFirstFileW(probe.c_str(), &fd);
+        if (h == INVALID_HANDLE_VALUE) return;
+        do {
+            if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
+            std::wstring cfgPath = folder + L"\\" + fd.cFileName;
+            sfm::SfmConfig cfg; int targetStyle = 5;
+            if (!readSfmCfg(cfgPath, cfg, targetStyle)) continue;
+            std::wstring nameW = utf8ToWide(cfg.name);
+            std::wstring sf2W  = folder + L"\\" + nameW + L".sf2";
+            // (Re)generate if the .sf2 is missing.
+            if (GetFileAttributesW(sf2W.c_str()) == INVALID_FILE_ATTRIBUTES) {
+                sfm::SfmGenerator::generate(cfg, wideToUtf8(sf2W));
+            }
+            UserSfEntry e;
+            e.cfg = cfg;
+            e.sf2Path = sf2W;
+            e.nameWide = nameW;
+            e.targetStyle = std::clamp(targetStyle, 0, kStyleCount - 1);
+            std::string sf2A = wideToUtf8(sf2W);
+            e.synth = tsf_load_filename(sf2A.c_str());
+            if (e.synth) {
+                tsf_set_output(e.synth, TSF_STEREO_INTERLEAVED, (int)sampleRate, -3.0f);
+                tsf_set_max_voices(e.synth, 24);
+            }
+            userSfs.push_back(std::move(e));
+        } while (FindNextFileW(h, &fd));
+        FindClose(h);
+        rebuildExtraPresets();
+    }
+
+
     void sfNoteOn(int style, int16_t pitch, float vel, int32 noteId) {
-        if (!sfReady) return;
+        if (!sfReady || style < 0 || style >= kStyleCount || !sfSynth[style]) return;
         std::lock_guard<std::mutex> lk(sfMutex);
         int ch = kSfChannelOf(style);
-        tsf_channel_note_on(sfSynth, ch, pitch, vel);
+        tsf_channel_note_on(sfSynth[style], ch, pitch, vel);
         // Remember for matching note-off.
         for (auto& a : sfActive) {
             if (!a.used) {
                 a.used = true; a.noteId = noteId;
                 a.pitch = pitch; a.channel = (int8_t)ch;
+                a.styleIdx = (int8_t)style;
                 return;
             }
         }
@@ -1395,7 +1391,8 @@ private:
             if (!a.used) continue;
             if (noteId >= 0 ? (a.noteId == noteId)
                             : (a.pitch == pitchFallback)) {
-                tsf_channel_note_off(sfSynth, a.channel, a.pitch);
+                int st = std::clamp((int)a.styleIdx, 0, kStyleCount - 1);
+                if (sfSynth[st]) tsf_channel_note_off(sfSynth[st], a.channel, a.pitch);
                 a.used = false;
                 return;
             }
@@ -1405,30 +1402,60 @@ private:
     void sfAllNotesOff() {
         if (!sfReady) return;
         std::lock_guard<std::mutex> lk(sfMutex);
-        for (int ch = 0; ch < 10; ++ch)
-            tsf_channel_sounds_off_all(sfSynth, ch);
+        for (int s = 0; s < kStyleCount; ++s) {
+            if (!sfSynth[s]) continue;
+            for (int ch = 0; ch < 10; ++ch)
+                tsf_channel_sounds_off_all(sfSynth[s], ch);
+        }
         for (auto& a : sfActive) a.used = false;
+    }
+
+    // Apply a preset (index into the *effective* dropdown) to a style.
+    // Internal: used by both loadSoundFont() and setSfPreset().
+    void applyPresetForStyle(int style, int idx) {
+        if (style < 0 || style >= kStyleCount) return;
+        int n = effectivePresetCount(style);
+        if (n <= 0) return;
+        idx = std::clamp(idx, 0, n - 1);
+        int ch = kSfChannelOf(style);
+        SfPreset p = effectivePreset(style, idx);
+        if (sfSynth[style]) tsf_channel_sounds_off_all(sfSynth[style], ch);
+        if (p.source == 2) {
+            // User SF: route to the entry's own TSF.
+            UserSfEntry* u = findUserSfFor(style, idx);
+            if (u && u->synth) {
+                sfSynth[style] = u->synth;
+                tsf_channel_set_presetnumber(sfSynth[style], ch, 0, 0);
+                tsf_channel_set_volume(sfSynth[style], ch, sfVolumePerStyle[style]);
+            }
+        } else {
+            int src = (p.source == 1 && sfBank[1][style]) ? 1 : 0;
+            if (!sfBank[src][style]) src = 0;
+            sfSynth[style] = sfBank[src][style];
+            if (!sfSynth[style]) return;
+            tsf_channel_set_presetnumber(sfSynth[style], ch, p.program, p.bank == 128 ? 1 : 0);
+            tsf_channel_set_volume(sfSynth[style], ch, sfVolumePerStyle[style]);
+        }
     }
 
     // Public-ish helpers used by the GUI to change preset / volume per style.
     void setSfPreset(int style, int idx) {
-        if (style < 0 || style >= 6) return;
-        idx = std::clamp(idx, 0, kSfPresetCount[style] - 1);
+        if (style < 0 || style >= kStyleCount) return;
+        int n = effectivePresetCount(style);
+        if (n <= 0) return;
+        idx = std::clamp(idx, 0, n - 1);
         sfPresetIdxPerStyle[style] = idx;
         if (!sfReady) return;
         std::lock_guard<std::mutex> lk(sfMutex);
-        int ch = kSfChannelOf(style);
-        const SfPreset& p = kSfPresetsByStyle[style][idx];
-        tsf_channel_sounds_off_all(sfSynth, ch);
-        tsf_channel_set_presetnumber(sfSynth, ch, p.program, p.bank == 128 ? 1 : 0);
+        applyPresetForStyle(style, idx);
     }
 
     void setSfVolume(int style, float v) {
-        if (style < 0 || style >= 6) return;
+        if (style < 0 || style >= kStyleCount) return;
         sfVolumePerStyle[style] = std::clamp(v, 0.0f, 1.5f);
-        if (!sfReady) return;
+        if (!sfReady || !sfSynth[style]) return;
         std::lock_guard<std::mutex> lk(sfMutex);
-        tsf_channel_set_volume(sfSynth, kSfChannelOf(style),
+        tsf_channel_set_volume(sfSynth[style], kSfChannelOf(style),
                                sfVolumePerStyle[style]);
     }
 
@@ -1516,16 +1543,27 @@ private:
         float* R = bus.numChannels > 1 ? bus.channelBuffers32[1] : L;
         if (!L) return;
 
-        // SoundFont path: render TSF and bypass the internal oscillator synth.
+        // SoundFont path: render each style to its own output bus.
         if (sfReady) {
             {
                 std::lock_guard<std::mutex> lk(sfMutex);
                 thread_local std::vector<float> sfBuf;
                 if (sfBuf.size() < nframes * 2) sfBuf.resize(nframes * 2);
-                tsf_render_float(sfSynth, sfBuf.data(), (int)nframes, 0);
-                for (uint32_t s = 0; s < nframes; ++s) {
-                    L[s] += sfBuf[2 * s];
-                    if (R != L) R[s] += sfBuf[2 * s + 1];
+                for (int st = 0; st < kStyleCount; ++st) {
+                    if (!sfSynth[st]) continue;
+                    int busIdx = (st < numOutputs) ? st : 0;
+                    AudioBusBuffers& sBus = outBuses[busIdx];
+                    if (!sBus.channelBuffers32) continue;
+                    float* sL = sBus.numChannels > 0 ? sBus.channelBuffers32[0] : nullptr;
+                    float* sR = sBus.numChannels > 1 ? sBus.channelBuffers32[1] : sL;
+                    if (!sL) continue;
+                    tsf_render_float(sfSynth[st], sfBuf.data(), (int)nframes, 0);
+                    // Per-style FX chain (chorus / delay / reverb / cassette noise).
+                    fxChainPerStyle[st].processInterleaved(sfBuf.data(), (int)nframes);
+                    for (uint32_t i = 0; i < nframes; ++i) {
+                        sL[i] += sfBuf[2 * i];
+                        if (sR != sL) sR[i] += sfBuf[2 * i + 1];
+                    }
                 }
             }
             // Fire pending SoundFont note-offs (in-block releases, approximated to block end).
@@ -1708,10 +1746,45 @@ private:
             int semitone = key + tone + (oct + octShift) * 12;
             return (int16_t)std::clamp(semitone, 0, 127);
         }
-        case 2: { // Basse: root + fifth, one octave lower
-            int bassOct = std::max(2, oct - 1);
-            int degree  = ((slot % 4) == 2) ? 4 : 0;
-            return (int16_t)std::clamp(key + ivl[degree] + bassOct * 12, 0, 127);
+        case 2: { // Basse: suit la progression, ancre beat 1 (root), 5ème sur beat 3
+            int bassOct    = std::max(2, oct - 1);
+            int subdiv     = mm::normalized_subdiv(params[mm::kParamSubdiv]);
+            int slotsPerBar= subdiv * 4;
+            int64_t bar    = slot / slotsPerBar;
+            int posInBar   = (int)(((slot % slotsPerBar) + slotsPerBar) % slotsPerBar);
+            int beatInBar  = posInBar / subdiv;
+            int subInBeat  = posInBar % subdiv;
+            int prog       = std::clamp(progression, 0, mm::kProgressionCount - 1);
+            int chordRoot  = mm::kProgressions[prog][((bar % mm::kProgressionLength)
+                             + mm::kProgressionLength) % mm::kProgressionLength];
+            // Root semitone of the current chord
+            int rootSemi   = ivl[chordRoot % len];
+            // Fifth of the current chord (4 scale degrees up)
+            int fifthSemi  = ivl[(chordRoot + 4) % len];
+            // Approach note: chromatic half-step below root (for beat 4 walk-up)
+            int approachSemi = rootSemi - 1;
+            int semi;
+            if (subInBeat != 0) {
+                // Off-beat subdivisions: stay on root
+                semi = rootSemi;
+            } else if (beatInBar == 0) {
+                // Beat 1: always the chord root
+                semi = rootSemi;
+            } else if (beatInBar == 2) {
+                // Beat 3: root 2/3 of the time, fifth 1/3
+                uint32_t r = (uint32_t)(slot * 1592795u + (uint32_t)seed * 1234567u + 7u);
+                mm::xorshift32(r);
+                semi = ((r % 3) == 0) ? fifthSemi : rootSemi;
+            } else if (beatInBar == 3) {
+                // Beat 4 at high density: walk-up approach to next chord root
+                uint32_t r = (uint32_t)(slot * 8675309u + (uint32_t)seed * 9876543u + 3u);
+                mm::xorshift32(r);
+                semi = ((r % 2) == 0) ? approachSemi : rootSemi;
+            } else {
+                // Beat 2: stay on root
+                semi = rootSemi;
+            }
+            return (int16_t)std::clamp(key + semi + bassOct * 12, 0, 127);
         }
         case 3: { // Percussions: GM drum map
             int subdiv = mm::normalized_subdiv(params[mm::kParamSubdiv]);
@@ -1725,14 +1798,25 @@ private:
             mm::xorshift32(r);
             return (mm::xorshift32(r) % 8 == 0) ? 46 : 42; // Open/Closed hi-hat
         }
-        case 4: { // Marimba: major pentatonic, random octave offset
-            static constexpr int penta[] = {0, 2, 4, 7, 9};
-            uint32_t s = (uint32_t)(slot * 2654435761u + (uint32_t)seed * 97u + 1u);
-            if (!s) s = 1;
-            mm::xorshift32(s);
-            int idx    = (int)(mm::xorshift32(s) % 5);
-            int octOff = (int)(mm::xorshift32(s) % 3) - 1;
-            return (int16_t)std::clamp(key + penta[idx] + (oct + octOff) * 12, 0, 127);
+        case 4: { // Marimba: chord-tone ostinato — bass/treble alternation (R/5/3/5)
+            // Fires every slot; pattern step = beatInBar mod 4.
+            // Creates the classic vibraphone/marimba low-high alternation.
+            int subdiv2     = mm::normalized_subdiv(params[mm::kParamSubdiv]);
+            int slotsPerBar2= subdiv2 * 4;
+            int slotInBar2  = (int)(((slot % slotsPerBar2) + slotsPerBar2) % slotsPerBar2);
+            int sPB2        = std::max(1, slotsPerBar2 / 4);
+            int beatInBar2  = slotInBar2 / sPB2;
+            int64_t bar2    = slot / slotsPerBar2;
+            int prog2       = std::clamp(progression, 0, mm::kProgressionCount - 1);
+            int chordRoot2  = mm::kProgressions[prog2][((bar2 % mm::kProgressionLength)
+                              + mm::kProgressionLength) % mm::kProgressionLength];
+            // 4-step ostinato: Root(low) / 5th(high) / 3rd(low) / 5th(high)
+            static constexpr int8_t mDeg[4]  = { 0, 4, 2, 4 };
+            static constexpr int8_t mOct[4]  = { 0, 1, 0, 1 };
+            int mStep = beatInBar2 & 3;
+            int mSemi = ivl[(chordRoot2 + (int)mDeg[mStep]) % len];
+            int mO    = std::clamp(oct + (int)mOct[mStep], 3, 7);
+            return (int16_t)std::clamp(key + mSemi + mO * 12, 0, 127);
         }
         case 5: { // Piano: chord root in left hand, in low octave
             int subdiv      = mm::normalized_subdiv(params[mm::kParamSubdiv]);
@@ -1754,6 +1838,7 @@ private:
     // active rhythm pattern.
     static void voicesForStyle(int style, const double* params, int64_t slot,
                                int progression, bool pianoMelody, bool pianoChord, int percRhythm,
+                               bool jam, int jamPercRhythm,
                                StyleVoices& out)
     {
         out.count = 0;
@@ -1851,51 +1936,202 @@ private:
             return;
         }
 
-        // ---- Voix (winds): "surfs" on the harmonic wave of the other
-        //      instruments. Picks a chord tone (R/3/5/7) of the current
-        //      bar's chord, sat one octave above the trigger, and holds
-        //      it for half a bar. Changes only when the chord/half-bar
-        //      changes, so it acts like a vocal line riding above the
-        //      texture rather than competing with the rhythm.
+        // ---- Mélodie (style 0): phrase mélodique depuis le corpus ichigos.
+        //      Les notes se déclenchent aux durées réelles de la phrase (dur_16ths).
+        //      Plus de rigidité beat-par-beat : une double-croche est une double-croche
+        //      quel que soit le subdiv choisi.
+        //
+        //      Mode JAM : quand actif, le rythme est calé sur la grille de la
+        //      percussion, et la hauteur suit le contour de l'arpège (style 1).
         if (style == 0) {
+            // ---- JAM mode: lock rhythm to perc grid, pitch to arpège --------
+            if (jam) {
+                int subdiv      = mm::normalized_subdiv(params[mm::kParamSubdiv]);
+                int slotsPerBar = subdiv * 4;
+                int slotInBar   = (int)(((slot % slotsPerBar) + slotsPerBar) % slotsPerBar);
+                // Map slot to the 16-step drum grid
+                int slotsPerStep = std::max(1, slotsPerBar / 16);
+                if (slotInBar % slotsPerStep != 0) return;  // sub-step → skip
+                int step = (slotInBar / slotsPerStep) % 16;
+                // Fire only when the perc pattern has a hit on this step
+                int percIdx = std::clamp(jamPercRhythm, 0, mm::kDrumPatternCount - 1);
+                const auto& pat = mm::kDrumPatterns[percIdx];
+                bool percHit = false;
+                for (int h = 0; h < 4; ++h)
+                    if (pat.steps[step][h].pitch != 0 && pat.steps[step][h].vel != 0)
+                        { percHit = true; break; }
+                if (!percHit) return;
+
+                // Pitch: follow arpège (style 1) chord-tone cycling
+                int key  = (int)std::round(params[mm::kParamKey]) % 12;
+                int mode = std::clamp((int)std::round(params[mm::kParamMode]), 0, mm::kScaleCount - 1);
+                int oct  = std::clamp((int)std::round(params[mm::kParamOctave]), 3, 6);
+                int64_t bar   = slot / slotsPerBar;
+                int prog = std::clamp(progression, 0, mm::kProgressionCount - 1);
+                int chordRoot = mm::kProgressions[prog][((bar % mm::kProgressionLength)
+                                + mm::kProgressionLength) % mm::kProgressionLength];
+                const int* ivl = mm::kScaleIntervals[mode];
+                const int  len  = mm::kScaleLengths[mode];
+                int t0 = ivl[(chordRoot + 0) % len];
+                int t1 = ivl[(chordRoot + 2) % len];
+                int t2 = ivl[(chordRoot + 4) % len];
+                // Same 14-step sawtooth as Arpège, one octave higher for voice clarity
+                static constexpr int kASteps = 14;
+                int pos = (int)(((slot % kASteps) + kASteps) % kASteps);
+                int tone, octShift;
+                switch (pos) {
+                    case 0:  tone = t0; octShift = 0; break;
+                    case 1:  tone = t1; octShift = 0; break;
+                    case 2:  tone = t2; octShift = 0; break;
+                    case 3:  tone = t0; octShift = 1; break;
+                    case 4:  tone = t1; octShift = 1; break;
+                    case 5:  tone = t2; octShift = 1; break;
+                    case 6:  tone = t0; octShift = 2; break;
+                    case 7:  tone = t2; octShift = 1; break;
+                    case 8:  tone = t1; octShift = 1; break;
+                    case 9:  tone = t0; octShift = 1; break;
+                    case 10: tone = t2; octShift = 0; break;
+                    case 11: tone = t1; octShift = 0; break;
+                    case 12: tone = t0; octShift = 0; break;
+                    default: tone = t2; octShift = -1; break;
+                }
+                int voiceOct = std::clamp(oct + 1 + octShift, 3, 7);
+                int pitch = std::clamp(key + tone + voiceOct * 12, 36, 96);
+                // Velocity mirrors perc accent: kick/strong → forte
+                float vel = (pat.steps[step][0].vel > 90) ? 0.85f
+                          : (pat.steps[step][0].vel > 60) ? 0.70f : 0.58f;
+                out.pitches[0] = (int16_t)pitch;
+                out.vels[0]    = vel;
+                out.count      = 1;
+                return;
+            }
             int subdiv      = mm::normalized_subdiv(params[mm::kParamSubdiv]);
             int slotsPerBar = subdiv * 4;
-            int slotInBar   = (int)(((slot % slotsPerBar) + slotsPerBar) % slotsPerBar);
-            int subdivPerBeat = std::max(1, slotsPerBar / 4);
-            int beat = slotInBar / subdivPerBeat;
-            int sub  = slotInBar % subdivPerBeat;
-            // Sing only on beat 1 (full bar) and beat 3 (half bar).
-            if (sub != 0)               return;
-            if (beat != 0 && beat != 2) return;
 
-            int key  = (int)std::round(params[mm::kParamKey]) % 12;
-            int mode = std::clamp((int)std::round(params[mm::kParamMode]), 0, mm::kScaleCount - 1);
-            int oct  = std::clamp((int)std::round(params[mm::kParamOctave]), 3, 6);
-            int prog = std::clamp(progression, 0, mm::kProgressionCount - 1);
+            int key    = (int)std::round(params[mm::kParamKey]) % 12;
+            int mode   = std::clamp((int)std::round(params[mm::kParamMode]), 0, mm::kScaleCount - 1);
+            int oct    = std::clamp((int)std::round(params[mm::kParamOctave]), 3, 6);
+            int prog   = std::clamp(progression, 0, mm::kProgressionCount - 1);
+            int seed   = (int)std::round(params[mm::kParamSeed]);
             int64_t bar = slot / slotsPerBar;
-            int chordRoot = mm::kProgressions[prog][((bar % mm::kProgressionLength) + mm::kProgressionLength) % mm::kProgressionLength];
-            const int* ivl = mm::kScaleIntervals[mode];
-            const int  len  = mm::kScaleLengths[mode];
 
-            // Pick a chord tone: beat 1 = root or 5th, beat 3 = 3rd or 7th.
-            // Seeded so different seeds give different vocal contours but
-            // the line still tracks the harmony.
-            int seed = (int)std::round(params[mm::kParamSeed]);
-            uint32_t r = (uint32_t)((bar * 2654435761u)
-                       ^ (uint32_t)(seed * 374761393u)
-                       ^ (uint32_t)(beat * 0x9E3779B9u));
-            if (!r) r = 1;
-            mm::xorshift32(r);
-            int degOff;
-            if (beat == 0) degOff = (r & 1u) ? 4 : 0;   // 5th or root
-            else           degOff = (r & 1u) ? (len > 6 ? 6 : len - 1) : 2;  // 7th (or top) or 3rd
-            int semi = ivl[(chordRoot + degOff) % len];
-            // Sit one octave above the trigger so it's clearly a lead
-            // floating over the harp/bass texture.
-            int voiceOct = std::clamp(oct + 1, 4, 7);
-            int pitch = std::clamp(key + semi + voiceOct * 12, 36, 96);
-            out.pitches[0] = (int16_t)pitch;
-            out.vels[0]    = 0.72f;
+            // Mode tag : 0=majeur, 1=mineur
+            static constexpr int kMajorScales[] = {0, 3, 5, 12, 13, 20, 22, -1};
+            int mode_tag = 1;
+            for (int mi = 0; kMajorScales[mi] >= 0; ++mi)
+                if (mode == kMajorScales[mi]) { mode_tag = 0; break; }
+
+            // Archétype de progression (L1 sur les 4 premiers degrés)
+            uint8_t prog4[4];
+            for (int bi = 0; bi < 4; ++bi)
+                prog4[bi] = (uint8_t)mm::kProgressions[prog][bi];
+            int prog_arch = phrases::prog_to_arch(prog4);
+
+            // Sélection de la phrase : change tous les 2 bars
+            int64_t cycle = bar >> 1;
+            int bar_seed  = (int)(seed ^ (int)(cycle * 2654435761u));
+            bar_seed      = ((bar_seed % 50) + 50) % 50;
+
+            const phrases::Phrase& ph = phrases::get(bar_seed, mode_tag, prog_arch);
+            int n = ph.n_notes;
+            if (n == 0) return;
+
+            // Position de ce slot dans le cycle de 2 bars, en 32èmes de note.
+            // Chaque slot couvre la plage [slotStart32, slotEnd32).
+            int64_t cycleStartSlot = cycle * 2 * slotsPerBar;
+            int64_t slotInCycle    = slot - cycleStartSlot;
+            int64_t slotStart32    = slotInCycle * 8 / subdiv;
+            int64_t slotEnd32      = (slotInCycle + 1) * 8 / subdiv;
+
+            // Contexte harmonique : accord de la barre courante
+            int chordRoot = mm::kProgressions[prog][((bar % mm::kProgressionLength)
+                            + mm::kProgressionLength) % mm::kProgressionLength];
+            const int* ivl   = mm::kScaleIntervals[mode];
+            const int  len   = mm::kScaleLengths[mode];
+            int voiceOct     = std::clamp(oct + 1, 4, 7);
+
+            // Parcourt les notes de la phrase pour trouver celle qui démarre
+            // dans la plage de ce slot. Aucun filtrage beat-by-beat.
+            int64_t cumStart32 = 0;
+            for (int ni = 0; ni < n; ++ni) {
+                if (cumStart32 >= slotEnd32) break;          // déjà après ce slot
+                int64_t noteDur32 = (int64_t)ph.notes[ni].dur_16ths * 2;
+                if (cumStart32 >= slotStart32) {
+                    // Cette note démarre dans la fenêtre du slot courant → on joue
+                    int degOff = (int)ph.notes[ni].degree;
+                    int semi   = ivl[(chordRoot + degOff) % len];
+                    int pitch  = std::clamp(key + semi + voiceOct * 12, 36, 96);
+
+                    // Accent : 1ère note de la phrase forte, temps forts moyens,
+                    // subdivisions légères (basé sur la position en 32èmes).
+                    float vel;
+                    if (ni == 0)                       vel = 0.85f;  // attaque de phrase
+                    else if (cumStart32 % 16 == 0)     vel = 0.76f;  // sur un temps (noire)
+                    else if (cumStart32 %  8 == 0)     vel = 0.70f;  // sur une croche
+                    else                               vel = 0.60f;  // subdivision libre
+                    if (ph.weight >= 3) vel = std::min(1.0f, vel * 1.05f); // bonus corpus
+
+                    out.pitches[0] = (int16_t)pitch;
+                    out.vels[0]    = vel;
+                    out.count      = 1;
+                    return;  // une seule note par slot
+                }
+                cumStart32 += noteDur32;
+            }
+            return;
+        }
+
+        // ---- Contre (style 4): counter-melody — complementary lead voice.
+        //      Fires every beat (sub==0), uses chord tones that complement
+        //      Voix. Sits at oct (one below Voix's oct+1). Phrase contours
+        //      are the "mirror" of Voix shapes, offset by 1 bar in phrasing.
+        if (style == 4) {
+            int subdiv4       = mm::normalized_subdiv(params[mm::kParamSubdiv]);
+            int slotsPerBar4  = subdiv4 * 4;
+            int slotInBar4    = (int)(((slot % slotsPerBar4) + slotsPerBar4) % slotsPerBar4);
+            int sPB4          = std::max(1, slotsPerBar4 / 4);
+            int beat4         = slotInBar4 / sPB4;
+            int sub4          = slotInBar4 % sPB4;
+            if (sub4 != 0) return; // only on beats
+
+            int key4   = (int)std::round(params[mm::kParamKey]) % 12;
+            int mode4  = std::clamp((int)std::round(params[mm::kParamMode]), 0, mm::kScaleCount - 1);
+            int oct4   = std::clamp((int)std::round(params[mm::kParamOctave]), 3, 6);
+            int prog4  = std::clamp(progression, 0, mm::kProgressionCount - 1);
+            int seed4  = (int)std::round(params[mm::kParamSeed]);
+            int64_t bar4 = slot / slotsPerBar4;
+            int cRoot4 = mm::kProgressions[prog4][((bar4 % mm::kProgressionLength)
+                          + mm::kProgressionLength) % mm::kProgressionLength];
+            const int* ivl4 = mm::kScaleIntervals[mode4];
+            const int  len4  = mm::kScaleLengths[mode4];
+
+            // Six mirror-contours (complementary to Voix's 6 shapes).
+            // Voix:   arch(0 2 4 2), descent(4 2 0 1), rise(0 1 2 4),
+            //         inv-arch(2 4 2 0), pendulum(0 4 2 4), wave(2 4 5 4)
+            // Counter: moves in contrary motion, using the "other" chord tones.
+            static constexpr int8_t cc[6][4] = {
+                { 4,  2,  0,  2 },  // mirror arch     (5  3  R  3)
+                { 0,  2,  4,  5 },  // mirror descent  (R  3  5  6)
+                { 5,  4,  2,  0 },  // mirror rise     (6  5  3  R)
+                { 4,  2,  4,  6 },  // mirror inv-arch (5  3  5  7)
+                { 2,  0,  4,  0 },  // mirror pendulum (3  R  5  R)
+                { 4,  2,  1,  0 },  // mirror wave     (5  3  2  R)
+            };
+            // Phrase changes every 2 bars, offset 1 bar from Voix
+            uint32_t r4 = (uint32_t)(((bar4 + 1) >> 1) * 2654435761u)
+                        ^ (uint32_t)((seed4 + 37) * 374761393u);
+            if (!r4) r4 = 1;
+            mm::xorshift32(r4);
+            int ci4    = (int)(mm::xorshift32(r4) % 6);
+            int deg4   = (int)cc[ci4][beat4 & 3];
+            int semi4  = ivl4[(cRoot4 + deg4) % len4];
+            // Sit at oct (Voix is at oct+1) — inner voice below the lead
+            int cOct4  = std::clamp(oct4, 3, 6);
+            int pitch4 = std::clamp(key4 + semi4 + cOct4 * 12, 36, 96);
+            // Slightly softer than Voix lead
+            float vel4 = (beat4 == 0) ? 0.76f : (beat4 == 2) ? 0.68f : 0.54f;
+            out.pitches[0] = (int16_t)pitch4;
+            out.vels[0]    = vel4;
             out.count      = 1;
             return;
         }
@@ -1935,10 +2171,10 @@ private:
         // 100% = 4.0 slots (sustained, notes overlap). Applies to melodic styles.
         double lenMult = 0.15 + fracParam * fracParam * 3.85;
         switch (style) {
-        case 0: return std::max(slotBeats * 1.85, 1.85);         // Voix: tenue fixe ~2 temps
+        case 0: return 0.75 + fracParam * 0.75;                  // Voix: 0.75→1.5 beats (legato réglable)
         case 2: return slotBeats * (0.6 + fracParam * 2.4);      // Basse: 0.6→3.0 slots
         case 3: return std::min(slotBeats * 0.12, 0.05);         // Percus: toujours court
-        case 4: return slotBeats * (0.10 + fracParam * 0.90);    // Marimba: 0.1→1.0 slot
+        case 4: return 0.65 + fracParam * 0.85;                  // Contre: 0.65→1.5 beats (legato réglable)
         case 5: return slotBeats * lenMult;                      // Piano arpeggio
         default: return slotBeats * lenMult;                     // Harpe / Melodie
         }
@@ -1950,3330 +2186,762 @@ private:
     int16_t noteHist[kNoteHistSize]{};
 };
 
-// =============================================================================
-// MelodyMakerView â€“ minimal Win32 GUI editor (no VSTGUI dependency)
-//
-// Layout: 7 rows, each row = label + control (combobox or trackbar) + value.
-// Combobox for stepped params (Key, Mode, Octave, Subdiv, Seed).
-// Trackbar  for continuous params (Density, NoteLen).
-// =============================================================================
-
-static const wchar_t* kWndClass = L"MidnightMelodyMakerView";
-static constexpr int kIdBase   = 1000;
-static constexpr int kIdExport = 1007; // kIdBase + kParamCount
-static constexpr int kIdWave   = 1008;
-static constexpr int kIdStyle  = 1009;
-static constexpr int kIdProg   = 1010;
-static constexpr int kIdAuto   = 1011; // Auto-Key (listen) toggle
-static constexpr int kIdDice   = 1012; // Randomize seed of active style
-static constexpr int kIdPianoMel   = 1013; // Piano: enable right-hand melody
-static constexpr int kIdPercRhy    = 1014; // Percussion: rhythm pattern
-static constexpr int kIdPianoChord = 1015; // Piano: play chords (vs single notes)
-static constexpr int kIdVol        = 1016; // Per-style SoundFont volume slider
-static constexpr int kIdLockMode   = 1017; // Padlock for Mode
-static constexpr int kIdLockProg   = 1018; // Padlock for Progression
-static constexpr int kIdLockSubdiv = 1019; // Padlock for Subdiv
-static constexpr int kIdExportWav  = 1020; // Export rendered audio (WAV)
-static constexpr int kIdSavePreset = 1021; // Save current state to .mmp file
-static constexpr int kIdLoadPreset = 1022; // Load state from .mmp file
-static constexpr int kIdMeter      = 1023; // Global time-signature numerator combo
-static constexpr int kIdHumanize   = 1024; // Per-style timing humanization slider
-static constexpr int kIdRetard     = 1025; // Per-style groove retard slider
-static constexpr int kIdSection   = 1026; // Global section selector
-static constexpr int kIdStartBar  = 1027; // Per-style start-bar delay
-static constexpr int kIdUndo      = 1028; // Editor undo
-static constexpr int kIdRedo      = 1029; // Editor redo
-
-// Arrangement section types (used for volume dynamics).
-
-// ---------- Theme palette (Omnisphere-style anthracite blue-grey) ------------
-static constexpr COLORREF kColBg        = RGB(26, 31, 40);    // #1A1F28 main bg
-static constexpr COLORREF kColPanel     = RGB(35, 41, 52);    // #232934 panels
-static constexpr COLORREF kColControl   = RGB(44, 51, 62);    // #2C333E controls
-static constexpr COLORREF kColControlHi = RGB(56, 65, 78);    // hover/lighter
-static constexpr COLORREF kColBorder    = RGB(58, 66, 80);    // #3A4250
-static constexpr COLORREF kColHeader1   = RGB(20, 25, 34);    // top of gradient
-static constexpr COLORREF kColHeader2   = RGB(38, 46, 60);    // bottom of gradient
-static constexpr COLORREF kColAccent    = RGB(79, 195, 247);  // bright cyan
-static constexpr COLORREF kColAccentDark= RGB(56, 145, 200);
-static constexpr COLORREF kColAccentWarm= RGB(255, 159, 67);  // Omnisphere warm
-static constexpr COLORREF kColText      = RGB(221, 225, 232); // #DDE1E8
-static constexpr COLORREF kColTextDim   = RGB(122, 130, 148); // #7A8294
-static constexpr COLORREF kColTextValue = RGB(255, 255, 255);
-static constexpr COLORREF kColTabBg     = RGB(44, 51, 62);
-static constexpr COLORREF kColTabActive = RGB(58, 130, 246);  // bright blue
-static constexpr COLORREF kColWhite     = RGB(255, 255, 255);
-
-#ifndef TBS_TRANSPARENTBKGND
-#define TBS_TRANSPARENTBKGND 0x1000
-#endif
-
-// =============================================================================
-// KnobWidget â€“ custom rotary control for continuous params (Density / NoteLen)
-//   - Drag vertically (up = +, down = -). Shift = fine. Double-click = default.
-//   - Painted with anti-aliased arcs via GDI (SetStretchBltMode + GdiPlus-free).
-//   - Sends WM_HSCROLL / SB_THUMBPOSITION 0..1000 like a trackbar so existing
-//     handler can read the value without changes.
-// =============================================================================
-class KnobWidget {
-public:
-    static constexpr const wchar_t* kClassName = L"MidnightMMKnob";
-    int  posMin = 0, posMax = 1000, pos = 500, posDefault = 500;
-    HWND hWnd   = nullptr;
-    HWND hOwner = nullptr;
-    int  ctrlId = 0;
-    bool dragging = false;
-    POINT dragOrigin{};
-    int   dragOriginPos = 0;
-
-    static void registerClass(HINSTANCE hi) {
-        WNDCLASSW existing{};
-        if (GetClassInfoW(hi, kClassName, &existing)) return;
-        WNDCLASSW wc{};
-        wc.lpfnWndProc   = staticProc;
-        wc.hInstance     = hi;
-        wc.hbrBackground = nullptr; // we paint everything
-        wc.lpszClassName = kClassName;
-        wc.hCursor       = LoadCursor(nullptr, IDC_HAND);
-        wc.style         = CS_DBLCLKS;
-        RegisterClassW(&wc);
-    }
-
-    static HWND create(HWND parent, int id, int x, int y, int w, int h) {
-        HWND wnd = CreateWindowExW(0, kClassName, L"",
-            WS_CHILD | WS_VISIBLE,
-            x, y, w, h, parent, (HMENU)(LONG_PTR)id, g_hInst, nullptr);
-        return wnd;
-    }
-
-    int getPos() const { return pos; }
-    void setPos(int p) {
-        p = std::clamp(p, posMin, posMax);
-        if (p != pos) { pos = p; if (hWnd) InvalidateRect(hWnd, nullptr, FALSE); }
-    }
-
-private:
-    static LRESULT CALLBACK staticProc(HWND h, UINT m, WPARAM w, LPARAM l) {
-        auto* self = reinterpret_cast<KnobWidget*>(GetWindowLongPtrW(h, GWLP_USERDATA));
-        if (m == WM_NCCREATE) {
-            auto* cs = reinterpret_cast<CREATESTRUCTW*>(l);
-            self = new KnobWidget();
-            self->hWnd   = h;
-            self->hOwner = GetParent(h);
-            self->ctrlId = (int)(LONG_PTR)cs->hMenu;
-            SetWindowLongPtrW(h, GWLP_USERDATA, (LONG_PTR)self);
-            return TRUE;
-        }
-        if (!self) return DefWindowProcW(h, m, w, l);
-        LRESULT r = self->proc(m, w, l);
-        if (m == WM_NCDESTROY) {
-            SetWindowLongPtrW(h, GWLP_USERDATA, 0);
-            delete self;
-        }
-        return r;
-    }
-
-    void notifyOwner() {
-        // Mimic a trackbar: send WM_HSCROLL with SB_THUMBTRACK so the parent
-        // refresh path (onTrackbarChange) handles it uniformly.
-        if (hOwner)
-            SendMessageW(hOwner, WM_HSCROLL,
-                         MAKEWPARAM(SB_THUMBTRACK, (WORD)pos),
-                         (LPARAM)hWnd);
-    }
-
-    LRESULT proc(UINT m, WPARAM w, LPARAM l) {
-        switch (m) {
-            case WM_LBUTTONDOWN:
-                SetCapture(hWnd);
-                dragging = true;
-                GetCursorPos(&dragOrigin);
-                dragOriginPos = pos;
-                return 0;
-            case WM_MOUSEMOVE:
-                if (dragging) {
-                    POINT p; GetCursorPos(&p);
-                    int dy = dragOrigin.y - p.y; // up = positive
-                    bool fine = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
-                    int range = posMax - posMin;
-                    int sensitivity = fine ? 600 : 150; // pixels for full sweep
-                    int delta = (int)((double)dy * range / sensitivity);
-                    setPos(dragOriginPos + delta);
-                    notifyOwner();
-                }
-                return 0;
-            case WM_LBUTTONUP:
-                if (dragging) { ReleaseCapture(); dragging = false; }
-                return 0;
-            case WM_LBUTTONDBLCLK:
-                setPos(posDefault);
-                notifyOwner();
-                return 0;
-            case WM_MOUSEWHEEL: {
-                int z = GET_WHEEL_DELTA_WPARAM(w) / WHEEL_DELTA;
-                bool fine = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
-                int step = fine ? 4 : 25;
-                setPos(pos + z * step);
-                notifyOwner();
-                return 0;
-            }
-            case WM_ERASEBKGND: return 1;
-            case WM_PAINT: {
-                PAINTSTRUCT ps; HDC hdc = BeginPaint(hWnd, &ps);
-                paintKnob(hdc);
-                EndPaint(hWnd, &ps);
-                return 0;
-            }
-        }
-        return DefWindowProcW(hWnd, m, w, l);
-    }
-
-    void paintKnob(HDC hdc) {
-        RECT rc; GetClientRect(hWnd, &rc);
-        int W = rc.right, H = rc.bottom;
-        // Background fill (same as parent)
-        HBRUSH brBg = CreateSolidBrush(kColBg);
-        FillRect(hdc, &rc, brBg);
-        DeleteObject(brBg);
-
-        // Geometry
-        int cx = W / 2;
-        int cy = H / 2 + 1;
-        int radius = std::min(W, H) / 2 - 4;
-        int trackThick = 5;
-
-        // Background arc (track)
-        HPEN penTrack = CreatePen(PS_SOLID | PS_GEOMETRIC, trackThick, kColControl);
-        HPEN penOld   = (HPEN)SelectObject(hdc, penTrack);
-        SelectObject(hdc, GetStockObject(NULL_BRUSH));
-        SetArcDirection(hdc, AD_CLOCKWISE);
-        // Arc from 225Â° to -45Â° (going clockwise = 270Â° sweep, music-knob style)
-        // We compute endpoints: start angle 225Â° (lower-left), end angle -45Â° (lower-right)
-        const double PI = 3.14159265358979323846;
-        double a0 = 225.0 * PI / 180.0; // lower-left
-        double a1 = -45.0 * PI / 180.0; // lower-right
-        int x0 = cx + (int)(radius * std::cos(a0));
-        int y0 = cy - (int)(radius * std::sin(a0));
-        int x1 = cx + (int)(radius * std::cos(a1));
-        int y1 = cy - (int)(radius * std::sin(a1));
-        Arc(hdc, cx - radius, cy - radius, cx + radius, cy + radius, x0, y0, x1, y1);
-
-        // Foreground arc (filled portion proportional to value)
-        double t = (double)(pos - posMin) / std::max(1, (posMax - posMin));
-        t = std::clamp(t, 0.0, 1.0);
-        double aSweep = (225.0 + 45.0) * PI / 180.0; // total = 270Â°
-        double aEnd   = a0 - t * aSweep;
-        int xe = cx + (int)(radius * std::cos(aEnd));
-        int ye = cy - (int)(radius * std::sin(aEnd));
-        SelectObject(hdc, penOld);
-        DeleteObject(penTrack);
-        HPEN penArc = CreatePen(PS_SOLID | PS_GEOMETRIC, trackThick, kColAccent);
-        SelectObject(hdc, penArc);
-        if (t > 0.001)
-            Arc(hdc, cx - radius, cy - radius, cx + radius, cy + radius, x0, y0, xe, ye);
-        SelectObject(hdc, GetStockObject(BLACK_PEN));
-        DeleteObject(penArc);
-
-        // Inner disc (knob body)
-        int innerR = radius - 9;
-        HBRUSH brBody = CreateSolidBrush(kColControlHi);
-        HPEN   penBdy = CreatePen(PS_SOLID, 1, kColBorder);
-        HBRUSH brOld  = (HBRUSH)SelectObject(hdc, brBody);
-        SelectObject(hdc, penBdy);
-        Ellipse(hdc, cx - innerR, cy - innerR, cx + innerR, cy + innerR);
-        SelectObject(hdc, brOld);
-        DeleteObject(brBody);
-        SelectObject(hdc, GetStockObject(BLACK_PEN));
-        DeleteObject(penBdy);
-
-        // Indicator line
-        double ai = aEnd;
-        int ix1 = cx + (int)((innerR - 2) * std::cos(ai));
-        int iy1 = cy - (int)((innerR - 2) * std::sin(ai));
-        int ix2 = cx + (int)((innerR - 12) * std::cos(ai));
-        int iy2 = cy - (int)((innerR - 12) * std::sin(ai));
-        HPEN penInd = CreatePen(PS_SOLID, 3, kColAccent);
-        HPEN penOldI = (HPEN)SelectObject(hdc, penInd);
-        MoveToEx(hdc, ix2, iy2, nullptr);
-        LineTo(hdc, ix1, iy1);
-        SelectObject(hdc, penOldI);
-        DeleteObject(penInd);
-    }
-};
-
-class MelodyMakerView : public IPlugView
-{
-public:
-    explicit MelodyMakerView(MelodyMakerVST3* p) : plugin(p) {}
-
-    DECLARE_FUNKNOWN_METHODS
-
-    tresult PLUGIN_API isPlatformTypeSupported(FIDString type) override {
-        return (std::strcmp(type, kPlatformTypeHWND) == 0) ? kResultTrue : kResultFalse;
-    }
-
-    tresult PLUGIN_API attached(void* parent, FIDString /*type*/) override {
-        ensureWndClass();
-        INITCOMMONCONTROLSEX icc{ sizeof(icc), ICC_BAR_CLASSES | ICC_STANDARD_CLASSES };
-        InitCommonControlsEx(&icc);
-
-        // Theme resources
-        brBg = CreateSolidBrush(kColBg);
-        auto mkFont = [](int height, int weight, const wchar_t* face) {
-            LOGFONTW lf{}; lf.lfHeight = height; lf.lfWeight = weight;
-            lf.lfQuality = CLEARTYPE_QUALITY;
-            wcscpy_s(lf.lfFaceName, face);
-            return CreateFontIndirectW(&lf);
-        };
-        fontReg     = mkFont(-12, FW_NORMAL,   L"Segoe UI");
-        fontBold    = mkFont(-12, FW_SEMIBOLD, L"Segoe UI");
-        fontTitle   = mkFont(-22, FW_BOLD,     L"Segoe UI");
-        fontSection = mkFont(-11, FW_BOLD,     L"Segoe UI");
-        fontTab     = mkFont(-13, FW_SEMIBOLD, L"Segoe UI");
-        fontMono    = mkFont(-13, FW_NORMAL,   L"Consolas");
-
-        KnobWidget::registerClass(g_hInst);
-
-        hParent = (HWND)parent;
-        hWnd = CreateWindowExW(
-            0, kWndClass, L"",
-            WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN,
-            0, 0, kViewWidth, kViewHeight,
-            hParent, nullptr, g_hInst, nullptr);
-        if (!hWnd) return kResultFalse;
-
-        SetWindowLongPtrW(hWnd, GWLP_USERDATA, (LONG_PTR)this);
-        createControls();
-        refreshAll();
-        SetTimer(hWnd, 1, 120, nullptr); // 120 ms refresh for note display
-        return kResultOk;
-    }
-
-    tresult PLUGIN_API removed() override {
-        if (hWnd) { KillTimer(hWnd, 1); DestroyWindow(hWnd); hWnd = nullptr; }
-        if (brBg)        { DeleteObject(brBg);        brBg = nullptr; }
-        if (fontReg)     { DeleteObject(fontReg);     fontReg = nullptr; }
-        if (fontBold)    { DeleteObject(fontBold);    fontBold = nullptr; }
-        if (fontTitle)   { DeleteObject(fontTitle);   fontTitle = nullptr; }
-        if (fontSection) { DeleteObject(fontSection); fontSection = nullptr; }
-        if (fontTab)     { DeleteObject(fontTab);     fontTab = nullptr; }
-        if (fontMono)    { DeleteObject(fontMono);    fontMono = nullptr; }
-        return kResultOk;
-    }
-
-    tresult PLUGIN_API onWheel(float) override { return kResultFalse; }
-    tresult PLUGIN_API onKeyDown(char16, int16, int16) override { return kResultFalse; }
-    tresult PLUGIN_API onKeyUp(char16, int16, int16) override { return kResultFalse; }
-
-    tresult PLUGIN_API getSize(ViewRect* size) override {
-        if (!size) return kInvalidArgument;
-        size->left = 0; size->top = 0;
-        size->right = kViewWidth; size->bottom = kViewHeight;
-        return kResultOk;
-    }
-    tresult PLUGIN_API onSize(ViewRect*) override { return kResultOk; }
-    tresult PLUGIN_API onFocus(TBool) override { return kResultOk; }
-    tresult PLUGIN_API setFrame(IPlugFrame*) override { return kResultOk; }
-    tresult PLUGIN_API canResize() override { return kResultFalse; }
-    tresult PLUGIN_API checkSizeConstraint(ViewRect*) override { return kResultOk; }
-
-private:
-    static constexpr int kViewWidth      = 900;
-    static constexpr int kViewHeight     = 640;  // compacted layout
-    static constexpr int kPadX           = 18;
-    static constexpr int kHeaderH        = 50;
-    static constexpr int kTabsH          = 52;
-    static constexpr int kSectionTitleH  = 24;
-    static constexpr int kRowH           = 34;
-    static constexpr int kSectionGap     = 14;
-    static constexpr int kColumnGap      = 24;
-    static constexpr int kColumnW        = (kViewWidth - 2 * kPadX - kColumnGap) / 2; // 420
-    static constexpr int kRightColX      = kPadX + kColumnW + kColumnGap;             // 462
-    static constexpr int kLabelW         = 78;
-    static constexpr int kCtrlW          = kColumnW - kLabelW - 8 - 80 - 8;           // 246
-    static constexpr int kValueW         = 80;
-    static constexpr int kButtonH        = 38;
-    static constexpr int kKnobSize       = 56;
-    static constexpr int kTabCount       = 6;
-
-    MelodyMakerVST3* plugin;
-    HWND hParent = nullptr;
-    HWND hWnd    = nullptr;
-    HWND hCtrl[mm::kParamCount]   = {};
-    HWND hValue[mm::kParamCount]  = {};
-    HWND hLabel[mm::kParamCount]  = {};
-    HWND hWaveLabel               = nullptr;
-    HWND hProgLabel               = nullptr;
-    HWND hNotesLabel              = nullptr;
-    HWND hNoteDisplay             = nullptr;
-    HWND hExportBtn               = nullptr;
-    HWND hExportWavBtn            = nullptr; // Export rendered audio (WAV)
-    HWND hSavePresetBtn           = nullptr; // Save preset (.mmp)
-    HWND hLoadPresetBtn           = nullptr; // Load preset (.mmp)
-    HWND hWaveCombo               = nullptr;
-    HWND hProgCombo               = nullptr;
-    HWND hAutoBtn                 = nullptr; // LISTEN / Auto-Key toggle
-    HWND hDiceBtn                 = nullptr; // Randomize seed
-    HWND hPianoMelChk             = nullptr; // Piano: "MÃ©lodie" toggle
-    HWND hPianoChordChk           = nullptr; // Piano: "Accords" toggle
-    HWND hPercRhyLabel            = nullptr;
-    HWND hPercRhyCombo            = nullptr; // Percussion rhythm picker
-    HWND hVolLabel                = nullptr; // Volume label
-    HWND hVolSlider               = nullptr; // Volume trackbar (0..200)
-    HWND hVolValue                = nullptr; // Volume value text
-    HWND hLockMode                = nullptr; // Padlock toggle for Mode
-    HWND hLockProg                = nullptr; // Padlock toggle for Progr.
-    HWND hLockSubdiv              = nullptr; // Padlock toggle for Subdiv
-    HWND hMeterCombo              = nullptr; // Global time-signature combo
-    HWND hHumanizeLabel           = nullptr; // Humanize label
-    HWND hHumanizeKnob            = nullptr; // Humanize knob (0..1000)
-    HWND hHumanizeValue           = nullptr; // Humanize value text
-    HWND hRetardLabel             = nullptr; // Retard label
-    HWND hRetardKnob              = nullptr; // Retard knob (0..1000)
-    HWND hRetardValue             = nullptr; // Retard value text
-    HWND hSectionCombo  = nullptr; // Global section (Intro/Verse/Chorus/Bridge/Outro)
-    HWND hStartBarLabel = nullptr; // Per-style start-bar label
-    HWND hStartBarCombo = nullptr; // Per-style start-bar combo
-    HWND hPianoRoll     = nullptr; // Miniature horizontal piano roll
-
-    // Snapshot used by the piano roll painter (updated every timer tick)
-    struct PRNote { double beatOn; double beatLen; int16_t pitch; float vel; uint8_t style; };
-    std::vector<PRNote> prSnapshot; // GUI-thread only
-    double              prCurrentBeat = 0.0; // beat position of the playhead
-    static constexpr int kPRHeight     = 220; // px (params mode, Synthesia roll)
-    static constexpr int kPRBeats      = 16;  // beats shown (scrolling window)
-    static constexpr int kPianoStripH  = 60;  // px — piano keyboard at bottom of roll
-
-    // ---- View mode (params vs editor) ----
-    int  viewMode        = 0;   // 0 = params (Midnight), 1 = editor (Melody Maker)
-    bool paramsCollapsed = false; // collapse/expand parameter panels
-    RECT titleRectMidnight  = {};
-    RECT titleRectMelody    = {};
-    RECT paramsTitleRect    = {}; // hit-rect for PARAMÈTRES toggle header
-
-    // ---- Editor-mode persistent edits (per current style) ----
-    std::vector<PRNote> editorNotes;     // editable notes (filtered to one style)
-    int                 editorStyle = -1; // style editorNotes corresponds to
-    std::vector<std::vector<PRNote>> undoStack;
-    std::vector<std::vector<PRNote>> redoStack;
-    static constexpr size_t kUndoLimit = 64;
-
-    // Editor-time interactive drag state
-    bool   prDragging      = false;
-    int    prDragNoteIndex = -1;
-    double prDragStartBeat = 0.0;
-
-    // Undo/redo buttons
-    HWND hUndoBtn = nullptr;
-    HWND hRedoBtn = nullptr;
-
-    // Tab strip (custom-painted, no child windows)
-    RECT tabRects[kTabCount] = {};
-    RECT tabDotRects[kTabCount] = {};
-    int  hoverTab = -1;
-
-    // Theme resources (created in attached, freed in removed)
-    HBRUSH brBg     = nullptr;
-    HFONT  fontReg  = nullptr;
-    HFONT  fontBold = nullptr;
-    HFONT  fontTitle= nullptr;
-    HFONT  fontSection = nullptr;
-    HFONT  fontTab     = nullptr;
-    HFONT  fontMono = nullptr;
-
-    // Section paint info â€” y position of each section title (filled by applyLayout)
-    int sectionY[4] = {0,0,0,0};
-    int sectionX[4] = {0,0,0,0};
-    int sectionW[4] = {0,0,0,0};
-    static const wchar_t* sectionTitle(int i) {
-        static const wchar_t* t[4] = { L"SOUND", L"RYTHME", L"HARMONIE", L"EXPRESSION" };
-        return t[i];
-    }
-
-    static const wchar_t* tabLabel(int i) {
-        static const wchar_t* t[kTabCount] = {
-            L"Voix", L"Harpe", L"Basse", L"Percu.", L"Marimba", L"Piano"
-        };
-        return t[i];
-    }
-
-    static void ensureWndClass() {
-        // Check if already registered (survives plugin reload within same process).
-        WNDCLASSW existing{};
-        if (GetClassInfoW(g_hInst, kWndClass, &existing)) return;
-
-        WNDCLASSW wc{};
-        wc.lpfnWndProc   = staticWndProc;
-        wc.hInstance     = g_hInst;
-        wc.hbrBackground = (HBRUSH)(COLOR_BTNFACE + 1);
-        wc.lpszClassName = kWndClass;
-        wc.hCursor       = LoadCursor(nullptr, IDC_ARROW);
-        RegisterClassW(&wc);
-    }
-
-    static LRESULT CALLBACK staticWndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
-        auto* self = reinterpret_cast<MelodyMakerView*>(GetWindowLongPtrW(h, GWLP_USERDATA));
-        if (self) return self->wndProc(h, m, w, l);
-        return DefWindowProcW(h, m, w, l);
-    }
-
-    // Piano roll child window proc
-    static constexpr const wchar_t* kPRClass = L"MidnightMMPianoRoll";
-    static void ensurePRClass() {
-        WNDCLASSW ex{};
-        if (GetClassInfoW(g_hInst, kPRClass, &ex)) return;
-        WNDCLASSW wc{};
-        wc.lpfnWndProc   = prWndProc;
-        wc.hInstance     = g_hInst;
-        wc.hbrBackground = nullptr;
-        wc.lpszClassName = kPRClass;
-        wc.hCursor       = LoadCursor(nullptr, IDC_ARROW);
-        RegisterClassW(&wc);
-    }
-    static LRESULT CALLBACK prWndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
-        if (m == WM_ERASEBKGND) return 1;
-        auto* self = reinterpret_cast<MelodyMakerView*>(GetWindowLongPtrW(h, GWLP_USERDATA));
-        if (m == WM_PAINT) {
-            if (self) { self->paintPianoRoll(h); return 0; }
-        }
-        if (self && self->isEditorActive()) {
-            int mx = GET_X_LPARAM(l), my = GET_Y_LPARAM(l);
-            switch (m) {
-                case WM_LBUTTONDOWN: {
-                    SetCapture(h);
-                    self->prEditorMouseDown(mx, my);
-                    return 0;
-                }
-                case WM_MOUSEMOVE:
-                    if (self->prDragging) self->prEditorMouseDrag(mx, my);
-                    return 0;
-                case WM_LBUTTONUP:
-                    if (self->prDragging) {
-                        ReleaseCapture();
-                        self->prDragging = false;
-                        self->prDragNoteIndex = -1;
-                    }
-                    return 0;
-                case WM_RBUTTONDOWN:
-                    self->prEditorRightClick(mx, my);
-                    return 0;
-            }
-        }
-        return DefWindowProcW(h, m, w, l);
-    }
-    // -- Coordinate helpers (used by both painter and edit handlers) --
-    // Last computed pitch range, beat range, and key-strip width for the
-    // current piano roll painting; updated on each WM_PAINT.
-    int    prKeyW       = 0;    // left-strip width (0 in Synthesia mode, no left strip)
-    int    prPianoStripH = kPianoStripH; // bottom keyboard strip height (updated at paint)
-    int    prPitchLo    = 36;
-    int    prPitchHi    = 84;
-    double prStartBeat  = 0.0;
-    double prEndBeat    = 16.0;
-    int    prW          = 0;
-    int    prH          = 0;
-
-    bool isEditorActive() const {
-        return viewMode == 1 && plugin && editorStyle == plugin->getStyleType();
-    }
-    static constexpr int kEditorBeats = 32; // fixed time window in editor mode
-
-    // Convert roll client coords → (beat, pitch).  Returns false if outside the note area.
-    // Synthesia layout: X = pitch, Y = time (top=oldest, bottom=newest), piano strip at bottom.
-    bool prClientToBeatPitch(int mx, int my, double& beatOut, int& pitchOut) const {
-        int rollH = prH - prPianoStripH;
-        if (mx < 0 || mx >= prW || my < 0 || my >= rollH) return false;
-        int range = prPitchHi - prPitchLo;
-        if (range <= 0 || prW <= 0 || rollH <= 0) return false;
-        pitchOut = prPitchLo + (int)((double)mx / prW * range);
-        pitchOut = std::clamp(pitchOut, prPitchLo, prPitchHi - 1);
-        double beatRange = prEndBeat - prStartBeat;
-        if (beatRange <= 0) return false;
-        beatOut = prStartBeat + (double)my / rollH * beatRange;
-        return true;
-    }
-    // Convert X coord only → pitch (used for piano-strip clicks).
-    bool prPianoXToPitch(int mx, int& pitchOut) const {
-        if (mx < 0 || mx >= prW) return false;
-        int range = prPitchHi - prPitchLo;
-        if (range <= 0) return false;
-        pitchOut = prPitchLo + (int)((double)mx / prW * range);
-        pitchOut = std::clamp(pitchOut, prPitchLo, prPitchHi - 1);
-        return true;
-    }
-
-    // ============================================================
-    //  paintPianoRoll  —  Synthesia style
-    //  X axis: pitch (low = left, high = right)
-    //  Y axis: time  (top = oldest, bottom = most recent)
-    //  Piano keyboard strip at the very bottom (kPianoStripH px).
-    // ============================================================
-    void paintPianoRoll(HWND h) {
-        PAINTSTRUCT ps; HDC hdc = BeginPaint(h, &ps);
-        RECT rc; GetClientRect(h, &rc);
-        int W = rc.right, H = rc.bottom;
-        prW = W; prH = H;
-        prKeyW = 0; // no left strip in Synthesia mode
-        prPianoStripH = kPianoStripH;
-
-        HDC mem = CreateCompatibleDC(hdc);
-        HBITMAP bmp = CreateCompatibleBitmap(hdc, W, H);
-        HBITMAP oldBmp = (HBITMAP)SelectObject(mem, bmp);
-
-        // ---- Background ----
-        HBRUSH brBack = CreateSolidBrush(RGB(18, 22, 30));
-        FillRect(mem, &rc, brBack); DeleteObject(brBack);
-
-        // ---- Pick note source ----
-        int curStyle = plugin ? plugin->getStyleType() : 0;
-        bool editor = isEditorActive();
-        const std::vector<PRNote>* src = nullptr;
-        std::vector<PRNote> filtered;
-        if (editor) {
-            src = &editorNotes;
-        } else {
-            filtered.reserve(prSnapshot.size());
-            for (auto& n : prSnapshot)
-                if ((int)n.style == curStyle) filtered.push_back(n);
-            src = &filtered;
-        }
-
-        // ---- Time window ----
-        double startBeat, endBeat;
-        if (editor) {
-            startBeat = 0.0; endBeat = (double)kEditorBeats;
-        } else {
-            endBeat = prCurrentBeat; startBeat = endBeat - (double)kPRBeats;
-        }
-        prStartBeat = startBeat;
-        prEndBeat   = endBeat;
-
-        // ---- Dynamic pitch range ----
-        static const bool kIsBlack[12] = {0,1,0,1,0,0,1,0,1,0,1,0};
-        int pLo = 48, pHi = 84; // default C3..C6
-        if (!src->empty()) {
-            int mn = 127, mx2 = 0;
-            for (auto& n : *src) {
-                if (n.pitch < mn) mn = n.pitch;
-                if (n.pitch > mx2) mx2 = n.pitch;
-            }
-            mn = std::max(0, mn - 2);
-            mx2 = std::min(127, mx2 + 2);
-            mn -= (mn % 12);               // snap to C
-            mx2 += (12 - (mx2 % 12)) % 12;
-            while ((mx2 - mn) < 24) { if (mn >= 12) mn -= 12; else mx2 += 12; }
-            pLo = mn; pHi = mx2;
-        }
-        prPitchLo = pLo;
-        prPitchHi = pHi;
-        const int pitchRange = pHi - pLo;
-
-        int rollH = H - kPianoStripH;
-        double beatRange = endBeat - startBeat;
-
-        // Coordinate lambdas ---------------------------------------------------
-        // pitchToX: left edge of a semitone column
-        auto pitchToX1 = [&](int p) -> int {
-            return (int)((double)(p - pLo) / pitchRange * W);
-        };
-        auto pitchToX2 = [&](int p) -> int {  // right edge = left edge of next
-            return (int)((double)(p + 1 - pLo) / pitchRange * W);
-        };
-        // beatToY: Y coord in roll area (0=top/oldest, rollH=bottom/most-recent)
-        auto beatToY = [&](double b) -> int {
-            return (int)((b - startBeat) / beatRange * rollH);
-        };
-
-        // ---- Semitone column shading (black-key lanes slightly darker) ----
-        for (int p = pLo; p < pHi; ++p) {
-            if (!kIsBlack[(p + 120) % 12]) continue;
-            int x1 = pitchToX1(p), x2 = pitchToX2(p);
-            RECT rl = { x1, 0, x2, rollH };
-            HBRUSH bl = CreateSolidBrush(RGB(25, 30, 40));
-            FillRect(mem, &rl, bl); DeleteObject(bl);
-        }
-
-        // ---- Octave / beat grid ----
-        // Vertical: C-note column borders
-        for (int p = pLo; p <= pHi; ++p) {
-            if (((p + 120) % 12) == 0) {
-                int x = pitchToX1(p);
-                HPEN pn = CreatePen(PS_SOLID, 1, RGB(55, 65, 80));
-                HPEN op = (HPEN)SelectObject(mem, pn);
-                MoveToEx(mem, x, 0, nullptr); LineTo(mem, x, rollH);
-                SelectObject(mem, op); DeleteObject(pn);
-            }
-        }
-        // Horizontal: beat grid
-        for (int b = 0; b <= (editor ? kEditorBeats : (int)kPRBeats); ++b) {
-            int y = beatToY(startBeat + b);
-            y = std::clamp(y, 0, rollH - 1);
-            COLORREF c = (b % 4 == 0) ? RGB(55, 65, 80) : RGB(35, 42, 52);
-            HPEN pn = CreatePen(PS_SOLID, 1, c);
-            HPEN op = (HPEN)SelectObject(mem, pn);
-            MoveToEx(mem, 0, y, nullptr); LineTo(mem, W, y);
-            SelectObject(mem, op); DeleteObject(pn);
-        }
-        // Bar numbers in editor mode (left margin text)
-        if (editor) {
-            SetBkMode(mem, TRANSPARENT);
-            HFONT of = (HFONT)SelectObject(mem, fontReg);
-            SetTextColor(mem, RGB(100, 115, 135));
-            for (int b = 0; b <= kEditorBeats; b += 4) {
-                int y = beatToY((double)b);
-                y = std::clamp(y, 0, rollH - 14);
-                wchar_t s[8]; swprintf_s(s, L"%d", b / 4 + 1);
-                TextOutW(mem, 2, y + 1, s, (int)wcslen(s));
-            }
-            SelectObject(mem, of);
-        }
-
-        // ---- Per-style colors ----
-        static const COLORREF kCol[] = {
-            RGB(79,195,247), RGB(129,199,132), RGB(255,183,77),
-            RGB(240,98,146), RGB(206,147,216), RGB(255,241,118) };
-        static const COLORREF kColFill[] = {
-            RGB(25,70,105),  RGB(35,75,42),   RGB(90,65,18),
-            RGB(95,28,52),   RGB(72,45,88),   RGB(90,85,28) };
-
-        // ---- Notes ----
-        // Active pitches this frame (to highlight piano keys)
-        bool activeKey[128] = {};
-
-        for (auto& n : *src) {
-            double nOn = n.beatOn, nOff = n.beatOn + std::max(n.beatLen, 0.05);
-            if (nOff < startBeat || nOn > endBeat) continue;
-            int p = (int)n.pitch;
-            if (p < pLo || p >= pHi) continue;
-            int s = std::clamp((int)n.style, 0, 5);
-
-            int x1 = pitchToX1(p), x2 = std::max(pitchToX2(p), x1 + 2);
-            int y1 = std::clamp(beatToY(nOn),  0, rollH);
-            int y2 = std::clamp(beatToY(nOff), 0, rollH);
-            if (y2 <= y1) y2 = y1 + 3;
-
-            // Note body
-            RECT rn = { x1 + 1, y1, x2 - 1, y2 };
-            HBRUSH bf = CreateSolidBrush(kColFill[s]);
-            FillRect(mem, &rn, bf); DeleteObject(bf);
-            // Accent border
-            HPEN pn = CreatePen(PS_SOLID, 1, kCol[s]);
-            HPEN op = (HPEN)SelectObject(mem, pn);
-            HBRUSH nb = (HBRUSH)SelectObject(mem, GetStockObject(NULL_BRUSH));
-            Rectangle(mem, rn.left, rn.top, rn.right, rn.bottom);
-            SelectObject(mem, op); DeleteObject(pn);
-            SelectObject(mem, nb);
-
-            // Bright top cap (note head / attack indicator)
-            HPEN cap = CreatePen(PS_SOLID, 2, kCol[s]);
-            HPEN oc  = (HPEN)SelectObject(mem, cap);
-            MoveToEx(mem, x1 + 1, y1 + 1, nullptr);
-            LineTo   (mem, x2 - 1, y1 + 1);
-            SelectObject(mem, oc); DeleteObject(cap);
-
-            // Mark key as active if the note is currently sounding
-            if (nOn <= prCurrentBeat && prCurrentBeat <= nOff) activeKey[p] = true;
-        }
-
-        // ---- Playhead (horizontal line) ----
-        {
-            double playBeat = editor
-                ? std::fmod(prCurrentBeat, (double)kEditorBeats)
-                : prCurrentBeat;
-            if (playBeat < 0) playBeat += kEditorBeats;
-            int py = std::clamp(beatToY(playBeat), 0, rollH - 1);
-            HPEN pph = CreatePen(PS_SOLID, 2, editor ? RGB(255,255,120) : RGB(220,220,255));
-            HPEN oph = (HPEN)SelectObject(mem, pph);
-            MoveToEx(mem, 0, py, nullptr); LineTo(mem, W, py);
-            SelectObject(mem, oph); DeleteObject(pph);
-        }
-
-        // ---- Piano keyboard strip (bottom kPianoStripH px) ----
-        {
-            int kbY = rollH; // top of keyboard strip
-            // White key background
-            HBRUSH wkBr = CreateSolidBrush(RGB(235,232,225));
-            RECT rcKb = { 0, kbY, W, H };
-            FillRect(mem, &rcKb, wkBr); DeleteObject(wkBr);
-
-            // White key dividers
-            for (int p = pLo; p < pHi; ++p) {
-                if (kIsBlack[(p + 120) % 12]) continue;
-                int x2 = pitchToX2(p);
-                HPEN pn = CreatePen(PS_SOLID, 1, RGB(150,145,135));
-                HPEN op = (HPEN)SelectObject(mem, pn);
-                MoveToEx(mem, x2, kbY, nullptr); LineTo(mem, x2, H);
-                SelectObject(mem, op); DeleteObject(pn);
-                // Active highlight
-                if (activeKey[p]) {
-                    int xw1 = pitchToX1(p) + 1, xw2 = pitchToX2(p) - 1;
-                    HBRUSH ah = CreateSolidBrush(kCol[curStyle]);
-                    RECT ra = { xw1, kbY + kPianoStripH/2, xw2, H - 2 };
-                    FillRect(mem, &ra, ah); DeleteObject(ah);
-                }
-            }
-
-            // Black keys (drawn on top, 60% height, 65% width)
-            int bkH = (int)(kPianoStripH * 0.62);
-            for (int p = pLo; p < pHi; ++p) {
-                if (!kIsBlack[(p + 120) % 12]) continue;
-                double semW = (double)W / pitchRange;
-                int cx = pitchToX1(p) + (int)(semW / 2.0);
-                int bkW = std::max(3, (int)(semW * 0.65));
-                int xb1 = cx - bkW / 2, xb2 = xb1 + bkW;
-                COLORREF bkFill = activeKey[p] ? kCol[curStyle] : RGB(30, 28, 24);
-                HBRUSH bb = CreateSolidBrush(bkFill);
-                RECT rb = { xb1, kbY, xb2, kbY + bkH };
-                FillRect(mem, &rb, bb); DeleteObject(bb);
-                // Border
-                HPEN pn = CreatePen(PS_SOLID, 1, RGB(15, 12, 10));
-                HPEN op = (HPEN)SelectObject(mem, pn);
-                HBRUSH nob = (HBRUSH)SelectObject(mem, GetStockObject(NULL_BRUSH));
-                Rectangle(mem, rb.left, rb.top, rb.right, rb.bottom);
-                SelectObject(mem, op); DeleteObject(pn);
-                SelectObject(mem, nob);
-            }
-
-            // Divider line between roll and keyboard
-            HPEN div = CreatePen(PS_SOLID, 1, RGB(60, 70, 85));
-            HPEN odiv = (HPEN)SelectObject(mem, div);
-            MoveToEx(mem, 0, kbY, nullptr); LineTo(mem, W, kbY);
-            SelectObject(mem, odiv); DeleteObject(div);
-        }
-
-        // ---- Border ----
-        HPEN penB = CreatePen(PS_SOLID, 1, RGB(55,65,80));
-        HPEN opB  = (HPEN)SelectObject(mem, penB);
-        HBRUSH nb2 = (HBRUSH)SelectObject(mem, GetStockObject(NULL_BRUSH));
-        Rectangle(mem, 0, 0, W, H);
-        SelectObject(mem, opB); DeleteObject(penB);
-        SelectObject(mem, nb2);
-
-        BitBlt(hdc, 0, 0, W, H, mem, 0, 0, SRCCOPY);
-        SelectObject(mem, oldBmp);
-        DeleteObject(bmp); DeleteDC(mem);
-        EndPaint(h, &ps);
-    }
-
-    // ---- View mode + edit helpers ----
-    void setViewMode(int m) {
-        if (m == viewMode) return;
-        viewMode = m;
-        if (m == 1) enterEditorMode();
-        else        exitEditorMode();
-        applyVisibilityForStyle(plugin ? plugin->getStyleType() : 0);
-        InvalidateRect(hWnd, nullptr, TRUE);
-        if (hPianoRoll) InvalidateRect(hPianoRoll, nullptr, FALSE);
-    }
-    void enterEditorMode() {
-        // Snapshot current notes filtered by current style into editorNotes
-        int s = plugin ? plugin->getStyleType() : 0;
-        if (editorStyle != s) {
-            editorNotes.clear();
-            if (plugin && plugin->recMtx.try_lock()) {
-                double rsb = plugin->recStartBeat;
-                for (auto& n : plugin->recNotes) {
-                    if ((int)n.style != s) continue;
-                    PRNote pr{ rsb + n.beatOn, n.beatLen, n.pitch, n.vel, n.style };
-                    editorNotes.push_back(pr);
-                }
-                plugin->recMtx.unlock();
-            }
-            editorStyle = s;
-            undoStack.clear();
-            redoStack.clear();
-        }
-    }
-    void exitEditorMode() { /* keep editorNotes, just hide the editor UI */ }
-
-    void pushUndo() {
-        undoStack.push_back(editorNotes);
-        if (undoStack.size() > kUndoLimit) undoStack.erase(undoStack.begin());
-        redoStack.clear();
-    }
-    void doUndo() {
-        if (undoStack.empty()) return;
-        redoStack.push_back(editorNotes);
-        editorNotes = undoStack.back();
-        undoStack.pop_back();
-        if (hPianoRoll) InvalidateRect(hPianoRoll, nullptr, FALSE);
-    }
-    void doRedo() {
-        if (redoStack.empty()) return;
-        undoStack.push_back(editorNotes);
-        editorNotes = redoStack.back();
-        redoStack.pop_back();
-        if (hPianoRoll) InvalidateRect(hPianoRoll, nullptr, FALSE);
-    }
-
-    int hitTestEditorNote(int mx, int my) const {
-        if (!isEditorActive()) return -1;
-        int rollH = prH - prPianoStripH;
-        if (mx < 0 || mx >= prW || my < 0 || my >= rollH) return -1;
-        double beatRange = prEndBeat - prStartBeat;
-        if (beatRange <= 0 || prW <= 0 || rollH <= 0) return -1;
-        int range = prPitchHi - prPitchLo;
-        if (range <= 0) return -1;
-        for (int i = (int)editorNotes.size() - 1; i >= 0; --i) {
-            const auto& n = editorNotes[i];
-            // Pitch → X column
-            int x1 = (int)((double)((int)n.pitch - prPitchLo) / range * prW);
-            int x2 = (int)((double)((int)n.pitch + 1 - prPitchLo) / range * prW);
-            if (x2 <= x1) x2 = x1 + 2;
-            // Beat → Y row  (top = oldest, bottom = most recent)
-            int y1 = (int)((n.beatOn - prStartBeat) / beatRange * rollH);
-            int y2 = (int)((n.beatOn + std::max(n.beatLen, 0.05) - prStartBeat) / beatRange * rollH);
-            if (y2 <= y1) y2 = y1 + 3;
-            if (mx >= x1 && mx < x2 && my >= y1 && my <= y2) return i;
-        }
-        return -1;
-    }
-
-    void prEditorMouseDown(int mx, int my) {
-        int rollH = prH - prPianoStripH;
-
-        // ---- Click in the piano keyboard strip → tap a key / insert note ----
-        if (my >= rollH) {
-            int pitch;
-            if (!prPianoXToPitch(mx, pitch)) return;
-            pushUndo();
-            // Insert at the current playhead beat (mod editor window) or beat 0
-            double insertBeat = 0.0;
-            if (isEditorActive())
-                insertBeat = std::fmod(prCurrentBeat, (double)kEditorBeats);
-            insertBeat = std::max(0.0, std::round(insertBeat * 4.0) / 4.0);
-            int curStyle = plugin ? plugin->getStyleType() : 0;
-            PRNote n{ insertBeat, 0.5, (int16_t)pitch, 0.85f, (uint8_t)curStyle };
-            editorNotes.push_back(n);
-            if (hPianoRoll) InvalidateRect(hPianoRoll, nullptr, FALSE);
-            return;
-        }
-
-        // ---- Click in the note roll area ----
-        int hit = hitTestEditorNote(mx, my);
-        pushUndo();
-        if (hit >= 0) {
-            // Grab existing note to extend by dragging
-            prDragging = true;
-            prDragNoteIndex = hit;
-            prDragStartBeat = editorNotes[hit].beatOn;
-            return;
-        }
-        // Empty area: add a new note, pitch from X, beat from Y
-        double beat; int pitch;
-        if (!prClientToBeatPitch(mx, my, beat, pitch)) return;
-        beat = std::max(0.0, std::round(beat * 4.0) / 4.0); // snap to 1/4
-        int curStyle = plugin ? plugin->getStyleType() : 0;
-        PRNote n{ beat, 0.25, (int16_t)pitch, 0.85f, (uint8_t)curStyle };
-        editorNotes.push_back(n);
-        prDragging = true;
-        prDragNoteIndex = (int)editorNotes.size() - 1;
-        prDragStartBeat = beat;
-        if (hPianoRoll) InvalidateRect(hPianoRoll, nullptr, FALSE);
-    }
-    void prEditorMouseDrag(int mx, int my) {
-        if (prDragNoteIndex < 0 || prDragNoteIndex >= (int)editorNotes.size()) return;
-        // Drag extends length: compute beat from Y, keep pitch fixed
-        int rollH = prH - prPianoStripH;
-        double beatRange = prEndBeat - prStartBeat;
-        if (rollH <= 0 || beatRange <= 0) return;
-        double curBeat = prStartBeat + (double)std::clamp(my, 0, rollH) / rollH * beatRange;
-        curBeat = std::round(curBeat * 4.0) / 4.0;
-        double newLen = std::max(0.25, curBeat - prDragStartBeat + 0.25);
-        editorNotes[prDragNoteIndex].beatLen = newLen;
-        if (hPianoRoll) InvalidateRect(hPianoRoll, nullptr, FALSE);
-    }
-    void prEditorRightClick(int mx, int my) {
-        int hit = hitTestEditorNote(mx, my);
-        if (hit < 0) return;
-        pushUndo();
-        editorNotes.erase(editorNotes.begin() + hit);
-        if (hPianoRoll) InvalidateRect(hPianoRoll, nullptr, FALSE);
-    }
-
-    LRESULT wndProc(HWND h, UINT msg, WPARAM w, LPARAM l) {
-        switch (msg) {
-            case WM_COMMAND: {
-                int id   = LOWORD(w);
-                int code = HIWORD(w);
-                if (id == kIdExport && code == BN_CLICKED) {
-                    doExportMidi();
-                    return 0;
-                }
-                if (id == kIdExportWav && code == BN_CLICKED) {
-                    doExportWav();
-                    return 0;
-                }
-                if (id == kIdSavePreset && code == BN_CLICKED) {
-                    doSavePreset();
-                    return 0;
-                }
-                if (id == kIdLoadPreset && code == BN_CLICKED) {
-                    doLoadPreset();
-                    return 0;
-                }
-                if (id == kIdUndo && code == BN_CLICKED) { doUndo(); return 0; }
-                if (id == kIdRedo && code == BN_CLICKED) { doRedo(); return 0; }
-                if (id == kIdAuto && code == BN_CLICKED) {
-                    bool now = !plugin->getAutoKey();
-                    plugin->setAutoKey(now);
-                    if (!now) plugin->ctxClear();
-                    SetWindowTextW(hAutoBtn,
-                        now ? L"LISTEN  \u25CF  ON" : L"LISTEN  \u25CB  OFF");
-                    InvalidateRect(hAutoBtn, nullptr, TRUE);
-                    return 0;
-                }
-                if (id == kIdDice && code == BN_CLICKED) {
-                    plugin->randomizeSeed();
-                    refreshOne(mm::kParamSeed);
-                    return 0;
-                }
-                if (id == kIdPianoMel && code == BN_CLICKED) {
-                    LRESULT chk = SendMessageW(hPianoMelChk, BM_GETCHECK, 0, 0);
-                    int st = plugin->getStyleType();
-                    plugin->pianoMelodyPerStyle[st] = (chk == BST_CHECKED);
-                    return 0;
-                }
-                if (id == kIdPianoChord && code == BN_CLICKED) {
-                    LRESULT chk = SendMessageW(hPianoChordChk, BM_GETCHECK, 0, 0);
-                    int st = plugin->getStyleType();
-                    plugin->pianoChordPerStyle[st] = (chk == BST_CHECKED);
-                    return 0;
-                }
-                if (id == kIdPercRhy && code == CBN_SELCHANGE) {
-                    int sel = (int)SendMessageW(hPercRhyCombo, CB_GETCURSEL, 0, 0);
-                    int st = plugin->getStyleType();
-                    plugin->percRhythmPerStyle[st] =
-                        std::clamp(sel, 0, mm::kDrumPatternCount - 1);
-                    return 0;
-                }
-                if (id == kIdWave && code == CBN_SELCHANGE) {
-                    int sel = (int)SendMessageW(hWaveCombo, CB_GETCURSEL, 0, 0);
-                    if (sel != CB_ERR) {
-                        int st = plugin->getStyleType();
-                        plugin->setSfPreset(st, sel);
-                        plugin->setWaveType(sel); // keep legacy state happy
-                    }
-                    return 0;
-                }
-                if (id == kIdProg && code == CBN_SELCHANGE) {
-                    int sel = (int)SendMessageW(hProgCombo, CB_GETCURSEL, 0, 0);
-                    if (sel != CB_ERR) {
-                        plugin->setProgType(sel);
-                        // Refresh compat dots on Mode combo.
-                        if (hCtrl[mm::kParamMode]) {
-                            InvalidateRect(hCtrl[mm::kParamMode], nullptr, FALSE);
-                            UpdateWindow(hCtrl[mm::kParamMode]);
-                        }
-                    }
-                    return 0;
-                }
-                if ((id == kIdLockMode || id == kIdLockProg ||
-                     id == kIdLockSubdiv) && code == BN_CLICKED) {
-                    int s = plugin->getStyleType();
-                    if (id == kIdLockMode) {
-                        plugin->setLockMode(s, !plugin->lockModePerStyle[s]);
-                        InvalidateRect(hLockMode, nullptr, TRUE);
-                    } else if (id == kIdLockProg) {
-                        plugin->setLockProg(s, !plugin->lockProgPerStyle[s]);
-                        InvalidateRect(hLockProg, nullptr, TRUE);
-                    } else {
-                        plugin->setLockSubdiv(s, !plugin->lockSubdivPerStyle[s]);
-                        InvalidateRect(hLockSubdiv, nullptr, TRUE);
-                    }
-                    return 0;
-                }
-                if (id == kIdMeter && code == CBN_SELCHANGE) {
-                    int sel = (int)SendMessageW(hMeterCombo, CB_GETCURSEL, 0, 0);
-                    if (sel != CB_ERR) {
-                        plugin->beatsPerBarOverride = (sel == 0) ? 0 : sel + 1;
-                        if (plugin->beatsPerBarOverride >= 2)
-                            plugin->beatsPerBarAtomic.store(plugin->beatsPerBarOverride, std::memory_order_relaxed);
-                    }
-                    return 0;
-                }
-                if (id == kIdSection && code == CBN_SELCHANGE) {
-                    int sel = (int)SendMessageW(hSectionCombo, CB_GETCURSEL, 0, 0);
-                    if (sel >= 0 && sel < kSecCount) {
-                        plugin->currentSection.store(sel, std::memory_order_relaxed);
-                        // Notify the host so it tracks the change immediately
-                        // (without this the host may restore an old section on setState).
-                        double norm = sel / 4.0;
-                        plugin->beginEdit(MelodyMakerVST3::kParamSection);
-                        plugin->performEdit(MelodyMakerVST3::kParamSection, norm);
-                        plugin->endEdit(MelodyMakerVST3::kParamSection);
-                        if (sel == kSecIntro && !plugin->introFadeDone) plugin->sectionVolumeRamp = 0.0f;
-                        if (sel == kSecOutro) plugin->sectionVolumeRamp = 1.0f;
-                    }
-                    return 0;
-                }
-                if (id == kIdStartBar && code == CBN_SELCHANGE) {
-                    static constexpr int kSBV[] = { 0,1,2,4,8 };
-                    int sel = (int)SendMessageW(hStartBarCombo, CB_GETCURSEL, 0, 0);
-                    if (sel >= 0 && sel < 5)
-                        plugin->startBarPerStyle[plugin->getStyleType()] = kSBV[sel];
-                    return 0;
-                }
-                if (code == CBN_SELCHANGE && id >= kIdBase && id < kIdExport) {
-                    onComboChange(id - kIdBase);
-                    return 0;
-                }
-                break;
-            }
-            case WM_HSCROLL: {
-                HWND tb = (HWND)l;
-                int id = (int)GetWindowLongPtrW(tb, GWLP_ID);
-                if (id >= kIdBase && id < kIdBase + (int)mm::kParamCount) {
-                    onTrackbarChange(id - kIdBase);
-                    return 0;
-                }
-                if (id == kIdVol) {
-                    int pos = (int)SendMessageW(hVolSlider, TBM_GETPOS, 0, 0);
-                    plugin->setSfVolume(plugin->getStyleType(), pos / 100.0f);
-                    refreshVolValue();
-                    return 0;
-                }
-                if (id == kIdHumanize) {
-                    auto* kw = reinterpret_cast<KnobWidget*>(GetWindowLongPtrW((HWND)l, GWLP_USERDATA));
-                    int pos = kw ? kw->getPos() : 0;
-                    plugin->humanizePerStyle[plugin->getStyleType()] = pos / 1000.0f;
-                    refreshHumanizeValue();
-                    return 0;
-                }
-                if (id == kIdRetard) {
-                    auto* kw = reinterpret_cast<KnobWidget*>(GetWindowLongPtrW((HWND)l, GWLP_USERDATA));
-                    int pos = kw ? kw->getPos() : 0;
-                    plugin->retardPerStyle[plugin->getStyleType()] = pos / 1000.0f;
-                    refreshRetardValue();
-                    return 0;
-                }
-                break;
-            }
-            case WM_TIMER:
-                if (w == 1) {
-                    refreshNoteDisplay();
-                    // Update playhead beat position (used by both modes for visuals)
-                    if (plugin)
-                        prCurrentBeat = plugin->lastBeatPos.load(std::memory_order_relaxed);
-                    // Only refresh the live snapshot when not in editor mode.
-                    if (hPianoRoll && plugin && viewMode == 0) {
-                        prSnapshot.clear();
-                    if (plugin->recMtx.try_lock()) {
-                        double rsb = plugin->recStartBeat;
-                        for (auto& n : plugin->recNotes) {
-                            PRNote pr;
-                            pr.beatOn  = rsb + n.beatOn;
-                            pr.beatLen = n.beatLen;
-                            pr.pitch   = n.pitch;
-                            pr.vel     = n.vel;
-                            pr.style   = n.style;
-                            prSnapshot.push_back(pr);
-                        }
-                        plugin->recMtx.unlock();
-                    }
-                        InvalidateRect(hPianoRoll, nullptr, FALSE);
-                    } else if (hPianoRoll && viewMode == 1) {
-                        // Editor mode: just repaint to update playhead
-                        InvalidateRect(hPianoRoll, nullptr, FALSE);
-                    }
-                }
-                return 0;
-            case WM_ERASEBKGND:
-                return 1; // we paint ourselves in WM_PAINT
-            case WM_PAINT: {
-                PAINTSTRUCT ps; HDC hdc = BeginPaint(h, &ps);
-                paintBackground(hdc);
-                paintTabs(hdc);
-                EndPaint(h, &ps);
-                return 0;
-            }
-            case WM_LBUTTONDOWN: {
-                int x = GET_X_LPARAM(l), y = GET_Y_LPARAM(l);
-                // Title click: toggle view mode (Midnight vs Melody Maker)
-                if (PtInRect(&titleRectMidnight, POINT{x, y})) {
-                    setViewMode(0);
-                    return 0;
-                }
-                if (PtInRect(&titleRectMelody, POINT{x, y})) {
-                    setViewMode(1);
-                    return 0;
-                }
-                // PARAMÈTRES collapsible header click
-                if (paramsTitleRect.bottom > paramsTitleRect.top &&
-                    PtInRect(&paramsTitleRect, POINT{x, y})) {
-                    paramsCollapsed = !paramsCollapsed;
-                    applyVisibilityForStyle(plugin ? plugin->getStyleType() : 0);
-                    InvalidateRect(hWnd, nullptr, TRUE);
-                    return 0;
-                }
-                // First test the power dot â€” toggling does NOT change the
-                // currently edited tab.
-                for (int i = 0; i < kTabCount; ++i) {
-                    if (PtInRect(&tabDotRects[i], POINT{x, y})) {
-                        plugin->toggleStyleEnabled(i);
-                        RECT rcTabs = { 0, kHeaderH, kViewWidth, kHeaderH + kTabsH };
-                        InvalidateRect(hWnd, &rcTabs, FALSE);
-                        return 0;
-                    }
-                }
-                // Otherwise tab body click â†’ select that tab (and enable it).
-                for (int i = 0; i < kTabCount; ++i) {
-                    if (PtInRect(&tabRects[i], POINT{x, y})) {
-                        plugin->setStyleType(i); // setStyleType also enables it
-                        applyVisibilityForStyle(i);
-                        // Refresh all on-screen controls from the new style.
-                        refreshAll();
-                        populateInstrumentCombo(i);
-                        if (hVolSlider)
-                            SendMessageW(hVolSlider, TBM_SETPOS, TRUE,
-                                (LPARAM)(int)std::round(
-                                    plugin->sfVolumePerStyle[i] * 100.0f));
-                        refreshVolValue();
-                        if (hHumanizeKnob)
-                            if (auto* kw = reinterpret_cast<KnobWidget*>(GetWindowLongPtrW(hHumanizeKnob, GWLP_USERDATA)))
-                                kw->setPos((int)std::round(plugin->humanizePerStyle[i] * 1000.0f));
-                        refreshHumanizeValue();
-                        if (hRetardKnob)
-                            if (auto* kw = reinterpret_cast<KnobWidget*>(GetWindowLongPtrW(hRetardKnob, GWLP_USERDATA)))
-                                kw->setPos((int)std::round(plugin->retardPerStyle[i] * 1000.0f));
-                        refreshRetardValue();
-                        if (hStartBarCombo) {
-                            static constexpr int kSBV[] = { 0,1,2,4,8 };
-                            int sv = plugin->startBarPerStyle[i];
-                            int si = 0; for (int k=0;k<5;k++) if (kSBV[k]==sv) si=k;
-                            SendMessageW(hStartBarCombo, CB_SETCURSEL, si, 0);
-                        }
-                        if (hSectionCombo)
-                            SendMessageW(hSectionCombo, CB_SETCURSEL,
-                                std::clamp(plugin->currentSection.load(std::memory_order_relaxed), 0, 4), 0);
-                        if (hProgCombo) SendMessageW(hProgCombo, CB_SETCURSEL,
-                                                     plugin->getProgType(), 0);
-                        InvalidateRect(hWnd, nullptr, TRUE);
-                        break;
-                    }
-                }
-                return 0;
-            }
-            case WM_MOUSEMOVE: {
-                int x = GET_X_LPARAM(l), y = GET_Y_LPARAM(l);
-                int newHover = -1;
-                for (int i = 0; i < kTabCount; ++i)
-                    if (PtInRect(&tabRects[i], POINT{x, y})) { newHover = i; break; }
-                if (newHover != hoverTab) {
-                    hoverTab = newHover;
-                    // Repaint just the tab strip
-                    RECT rcTabs = { 0, kHeaderH, kViewWidth, kHeaderH + kTabsH };
-                    InvalidateRect(hWnd, &rcTabs, FALSE);
-                    if (newHover >= 0) {
-                        TRACKMOUSEEVENT tme{ sizeof(tme), TME_LEAVE, hWnd, 0 };
-                        TrackMouseEvent(&tme);
-                    }
-                }
-                return 0;
-            }
-            case WM_MOUSELEAVE:
-                if (hoverTab != -1) {
-                    hoverTab = -1;
-                    RECT rcTabs = { 0, kHeaderH, kViewWidth, kHeaderH + kTabsH };
-                    InvalidateRect(hWnd, &rcTabs, FALSE);
-                }
-                return 0;
-            case WM_CTLCOLORSTATIC: {
-                HDC hdc = (HDC)w;
-                HWND ctl = (HWND)l;
-                SetBkMode(hdc, TRANSPARENT);
-                bool isValue = false;
-                for (int i = 0; i < (int)mm::kParamCount; ++i)
-                    if (ctl == hValue[i]) { isValue = true; break; }
-                if (ctl == hNoteDisplay)      SetTextColor(hdc, kColAccent);
-                else if (isValue)             SetTextColor(hdc, kColTextValue);
-                else                          SetTextColor(hdc, kColText);
-                return (LRESULT)brBg;
-            }
-            case WM_CTLCOLORBTN:
-            case WM_CTLCOLOREDIT:
-            case WM_CTLCOLORLISTBOX: {
-                HDC hdc = (HDC)w;
-                SetBkMode(hdc, OPAQUE);
-                SetBkColor(hdc, kColControl);
-                SetTextColor(hdc, kColText);
-                static HBRUSH brCtl = nullptr;
-                if (!brCtl) brCtl = CreateSolidBrush(kColControl);
-                return (LRESULT)brCtl;
-            }
-            case WM_MEASUREITEM: {
-                auto* mis = (MEASUREITEMSTRUCT*)l;
-                if (mis && mis->CtlType == ODT_COMBOBOX) {
-                    mis->itemHeight = 22;
-                    return TRUE;
-                }
-                break;
-            }
-            case WM_DRAWITEM: {
-                auto* dis = (DRAWITEMSTRUCT*)l;
-                if (!dis) break;
-                if (dis->CtlID == (UINT)kIdExport) {
-                    drawAccentButton(dis);
-                    return TRUE;
-                }
-                if (dis->CtlID == (UINT)kIdExportWav) {
-                    drawAccentButton(dis);
-                    return TRUE;
-                }
-                if (dis->CtlID == (UINT)kIdSavePreset ||
-                    dis->CtlID == (UINT)kIdLoadPreset) {
-                    drawAccentButton(dis);
-                    return TRUE;
-                }
-                if (dis->CtlID == (UINT)kIdAuto) {
-                    drawListenButton(dis);
-                    return TRUE;
-                }
-                if (dis->CtlID == (UINT)kIdDice) {
-                    drawDiceButton(dis);
-                    return TRUE;
-                }
-                if (dis->CtlID == (UINT)kIdLockMode) {
-                    int s = plugin->getStyleType();
-                    drawLockButton(dis, plugin->lockModePerStyle[s]);
-                    return TRUE;
-                }
-                if (dis->CtlID == (UINT)kIdLockProg) {
-                    int s = plugin->getStyleType();
-                    drawLockButton(dis, plugin->lockProgPerStyle[s]);
-                    return TRUE;
-                }
-                if (dis->CtlID == (UINT)kIdLockSubdiv) {
-                    int s = plugin->getStyleType();
-                    drawLockButton(dis, plugin->lockSubdivPerStyle[s]);
-                    return TRUE;
-                }
-                if (dis->CtlID == (UINT)kIdUndo || dis->CtlID == (UINT)kIdRedo) {
-                    drawArrowButton(dis, dis->CtlID == (UINT)kIdUndo);
-                    return TRUE;
-                }
-                if (dis->CtlType == ODT_COMBOBOX) {
-                    drawComboItem(dis);
-                    return TRUE;
-                }
-                break;
-            }
-        }
-        return DefWindowProcW(h, msg, w, l);
-    }
-
-    // ---- Custom painting helpers --------------------------------------------
-    void paintBackground(HDC hdc) {
-        RECT rc; GetClientRect(hWnd, &rc);
-
-        // Fill base bg
-        FillRect(hdc, &rc, brBg);
-
-        // Header gradient
-        RECT rcH = { 0, 0, rc.right, kHeaderH };
-        TRIVERTEX vtx[2] = {};
-        vtx[0].x = rcH.left;  vtx[0].y = rcH.top;
-        vtx[0].Red   = (COLOR16)(GetRValue(kColHeader1) << 8);
-        vtx[0].Green = (COLOR16)(GetGValue(kColHeader1) << 8);
-        vtx[0].Blue  = (COLOR16)(GetBValue(kColHeader1) << 8);
-        vtx[1].x = rcH.right; vtx[1].y = rcH.bottom;
-        vtx[1].Red   = (COLOR16)(GetRValue(kColHeader2) << 8);
-        vtx[1].Green = (COLOR16)(GetGValue(kColHeader2) << 8);
-        vtx[1].Blue  = (COLOR16)(GetBValue(kColHeader2) << 8);
-        GRADIENT_RECT gr = { 0, 1 };
-        GradientFill(hdc, vtx, 2, &gr, 1, GRADIENT_FILL_RECT_V);
-
-        // Title text (split into two clickable zones: MIDNIGHT | MELODY MAKER)
-        SetBkMode(hdc, TRANSPARENT);
-        HFONT old = (HFONT)SelectObject(hdc, fontTitle);
-        // Title clipped to left portion of header (x=18..500).
-        // Controls (Section, LISTEN, Mesure) occupy the right portion (x=508..882).
-        const wchar_t* sMid = L"MIDNIGHT";
-        const wchar_t* sMel = L"  MELODY MAKER";
-        SIZE szM{}, szMM{};
-        GetTextExtentPoint32W(hdc, sMid, (int)wcslen(sMid), &szM);
-        GetTextExtentPoint32W(hdc, sMel, (int)wcslen(sMel), &szMM);
-        int yT = (kHeaderH - szM.cy) / 2;
-        int xT = kPadX;
-        // Update click rects (slightly enlarged vertical hit area)
-        titleRectMidnight = { xT, 0, xT + szM.cx, kHeaderH };
-        titleRectMelody   = { xT + szM.cx, 0, xT + szM.cx + szMM.cx, kHeaderH };
-
-        // Draw MIDNIGHT (active when viewMode==0)
-        SetTextColor(hdc, viewMode == 0 ? kColAccent : kColWhite);
-        TextOutW(hdc, xT, yT, sMid, (int)wcslen(sMid));
-        // Draw MELODY MAKER (active when viewMode==1)
-        SetTextColor(hdc, viewMode == 1 ? kColAccent : kColWhite);
-        TextOutW(hdc, xT + szM.cx, yT, sMel, (int)wcslen(sMel));
-
-        SelectObject(hdc, fontReg);
-        SetTextColor(hdc, kColTextDim);
-        RECT rcT = { kPadX, 4, 500, kHeaderH - 4 };
-        DrawTextW(hdc, L"VST3  \xB7  Generative MIDI", -1, &rcT,
-                  DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
-
-        // "Section" label above section combo (x=508..638, y=2..13).
-        {
-            RECT rcSec = { 508, 2, 638, 13 };
-            DrawTextW(hdc, L"Section", -1, &rcSec, DT_CENTER | DT_SINGLELINE);
-        }
-        // "Mesure" label above the time-signature combo (x=794..882, y=2..13).
-        {
-            RECT rcMesure = { kViewWidth - kPadX - 88, 2, kViewWidth - kPadX, 13 };
-            DrawTextW(hdc, L"Mesure", -1, &rcMesure, DT_CENTER | DT_SINGLELINE);
-        }
-
-        // Section titles + thin separators
-        SelectObject(hdc, fontSection);
-        HPEN penSep = CreatePen(PS_SOLID, 1, kColBorder);
-        HPEN penOld = (HPEN)SelectObject(hdc, penSep);
-        for (int i = 0; i < 4; ++i) {
-            int y = sectionY[i];
-            if (y <= 0) continue;
-            int sx = sectionX[i] > 0 ? sectionX[i] : kPadX;
-            int sw = sectionW[i] > 0 ? sectionW[i] : (rc.right - 2 * kPadX);
-            SetTextColor(hdc, kColAccent);
-            RECT rcS = { sx, y, sx + sw, y + 16 };
-            DrawTextW(hdc, sectionTitle(i), -1, &rcS,
-                      DT_LEFT | DT_VCENTER | DT_SINGLELINE);
-            int sepY = y + 18;
-            MoveToEx(hdc, sx, sepY, nullptr);
-            LineTo(hdc, sx + sw, sepY);
-        }
-        SelectObject(hdc, penOld);
-        DeleteObject(penSep);
-
-        // "PARAMÈTRES" collapsible header (params mode only)
-        if (viewMode == 0) {
-            const int yTop = kHeaderH + kTabsH + 4;
-            const int hdrH = 22;
-            paramsTitleRect = { 0, yTop, rc.right, yTop + hdrH };
-            HBRUSH hdrBr = CreateSolidBrush(RGB(28, 34, 44));
-            FillRect(hdc, &paramsTitleRect, hdrBr); DeleteObject(hdrBr);
-            SetTextColor(hdc, paramsCollapsed ? kColWhite : kColAccent);
-            SetBkMode(hdc, TRANSPARENT);
-            const wchar_t* arrow = paramsCollapsed ? L"  \u25B6  PARAM\u00c8TRES" : L"  \u25BC  PARAM\u00c8TRES";
-            RECT rcHdr = paramsTitleRect;
-            DrawTextW(hdc, arrow, -1, &rcHdr, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
-        } else {
-            paramsTitleRect = {};
-        }
-
-        SelectObject(hdc, old);
-    }
-
-
-    // Paint the 5-tab instrument selector below the header.
-    void paintTabs(HDC hdc) {
-        RECT rcStrip = { 0, kHeaderH, kViewWidth, kHeaderH + kTabsH };
-        HBRUSH brStrip = CreateSolidBrush(kColBg);
-        FillRect(hdc, &rcStrip, brStrip);
-        DeleteObject(brStrip);
-
-        int active = std::clamp(plugin->getStyleType(), 0, kTabCount - 1);
-        int margin = 12;
-        int gap    = 6;
-        int totalW = kViewWidth - 2 * margin;
-        int tabW   = (totalW - (kTabCount - 1) * gap) / kTabCount;
-        int tabH   = kTabsH - 12;
-        int top    = kHeaderH + 6;
-        int radius = 14;
-
-        SetBkMode(hdc, TRANSPARENT);
-        HFONT oldF = (HFONT)SelectObject(hdc, fontTab);
-
-        for (int i = 0; i < kTabCount; ++i) {
-            int x = margin + i * (tabW + gap);
-            tabRects[i] = { x, top, x + tabW, top + tabH };
-
-            bool isActive  = (i == active);
-            bool isHover   = (i == hoverTab) && !isActive;
-            bool isEnabled = plugin->isStyleEnabled(i);
-            COLORREF fill  = isActive ? kColTabActive
-                           : isHover  ? kColControlHi
-                                      : kColTabBg;
-            // Disabled tabs are drawn dimmer to make state obvious.
-            COLORREF txt   = isActive ? kColWhite
-                           : isEnabled ? kColText
-                                       : kColTextDim;
-
-            HBRUSH br = CreateSolidBrush(fill);
-            HPEN   pn = CreatePen(PS_SOLID, 1, isActive ? kColTabActive : kColBorder);
-            HBRUSH brOld = (HBRUSH)SelectObject(hdc, br);
-            HPEN   pnOld = (HPEN)SelectObject(hdc, pn);
-            RoundRect(hdc, x, top, x + tabW, top + tabH, radius, radius);
-            SelectObject(hdc, brOld);
-            SelectObject(hdc, pnOld);
-            DeleteObject(br);
-            DeleteObject(pn);
-
-            // Power dot (top-left of the tab) â€” click toggles enable.
-            int dotR = 7;
-            int dotCx = x + 14;
-            int dotCy = top + tabH / 2;
-            tabDotRects[i] = { dotCx - dotR, dotCy - dotR,
-                               dotCx + dotR, dotCy + dotR };
-            COLORREF dotFill = isEnabled
-                ? (isActive ? kColWhite : kColAccent)
-                : kColControl;
-            COLORREF dotEdge = isEnabled ? kColAccent : kColTextDim;
-            HBRUSH brDot = CreateSolidBrush(dotFill);
-            HPEN   pnDot = CreatePen(PS_SOLID, 2, dotEdge);
-            HBRUSH brDotOld = (HBRUSH)SelectObject(hdc, brDot);
-            HPEN   pnDotOld = (HPEN)SelectObject(hdc, pnDot);
-            Ellipse(hdc, tabDotRects[i].left, tabDotRects[i].top,
-                         tabDotRects[i].right, tabDotRects[i].bottom);
-            SelectObject(hdc, brDotOld);
-            SelectObject(hdc, pnDotOld);
-            DeleteObject(brDot);
-            DeleteObject(pnDot);
-
-            SetTextColor(hdc, txt);
-            RECT rcL = { x + 2 * dotR + 14, top, x + tabW - 6, top + tabH };
-            DrawTextW(hdc, tabLabel(i), -1, &rcL,
-                      DT_CENTER | DT_VCENTER | DT_SINGLELINE);
-        }
-        SelectObject(hdc, oldF);
-    }
-
-    void drawAccentButton(DRAWITEMSTRUCT* dis) {
-        RECT rc = dis->rcItem;
-        bool pressed = (dis->itemState & ODS_SELECTED) != 0;
-        bool focused = (dis->itemState & ODS_FOCUS)    != 0;
-        COLORREF fill = pressed ? kColAccentDark : kColAccent;
-        HBRUSH br = CreateSolidBrush(fill);
-        FillRect(dis->hDC, &rc, br);
-        DeleteObject(br);
-        if (focused) {
-            HBRUSH brB = CreateSolidBrush(kColWhite);
-            FrameRect(dis->hDC, &rc, brB);
-            DeleteObject(brB);
-        }
-        wchar_t txt[128];
-        int len = GetWindowTextW(dis->hwndItem, txt, 128);
-        SetBkMode(dis->hDC, TRANSPARENT);
-        SetTextColor(dis->hDC, kColWhite);
-        HFONT old = (HFONT)SelectObject(dis->hDC, fontBold);
-        DrawTextW(dis->hDC, txt, len, &rc,
-                  DT_CENTER | DT_VCENTER | DT_SINGLELINE);
-        SelectObject(dis->hDC, old);
-    }
-
-    // Owner-draw the LISTEN toggle (filled when on, hollow when off).
-    void drawListenButton(DRAWITEMSTRUCT* dis) {
-        RECT rc = dis->rcItem;
-        bool on = plugin->getAutoKey();
-        bool pressed = (dis->itemState & ODS_SELECTED) != 0;
-
-        COLORREF fill = on
-            ? (pressed ? kColAccentDark : kColAccent)
-            : (pressed ? kColControlHi  : kColControl);
-        COLORREF edge = on ? kColAccent : kColTextDim;
-        COLORREF txtC = on ? kColWhite  : kColText;
-
-        HBRUSH br = CreateSolidBrush(fill);
-        HPEN   pn = CreatePen(PS_SOLID, 1, edge);
-        HBRUSH brOld = (HBRUSH)SelectObject(dis->hDC, br);
-        HPEN   pnOld = (HPEN)SelectObject(dis->hDC, pn);
-        RoundRect(dis->hDC, rc.left, rc.top, rc.right, rc.bottom, 10, 10);
-        SelectObject(dis->hDC, brOld);
-        SelectObject(dis->hDC, pnOld);
-        DeleteObject(br);
-        DeleteObject(pn);
-
-        wchar_t txt[128];
-        int len = GetWindowTextW(dis->hwndItem, txt, 128);
-        SetBkMode(dis->hDC, TRANSPARENT);
-        SetTextColor(dis->hDC, txtC);
-        HFONT oldF = (HFONT)SelectObject(dis->hDC, fontBold);
-        DrawTextW(dis->hDC, txt, len, &rc,
-                  DT_CENTER | DT_VCENTER | DT_SINGLELINE);
-        SelectObject(dis->hDC, oldF);
-    }
-
-    // Owner-draw the dice button (small square with a die glyph).
-    void drawDiceButton(DRAWITEMSTRUCT* dis) {
-        RECT rc = dis->rcItem;
-        bool pressed = (dis->itemState & ODS_SELECTED) != 0;
-        COLORREF fill = pressed ? kColAccent     : kColControl;
-        COLORREF edge = pressed ? kColAccent     : kColTextDim;
-        COLORREF txtC = pressed ? kColWhite      : kColAccent;
-        HBRUSH br = CreateSolidBrush(fill);
-        HPEN   pn = CreatePen(PS_SOLID, 1, edge);
-        HBRUSH brOld = (HBRUSH)SelectObject(dis->hDC, br);
-        HPEN   pnOld = (HPEN)SelectObject(dis->hDC, pn);
-        RoundRect(dis->hDC, rc.left, rc.top, rc.right, rc.bottom, 6, 6);
-        SelectObject(dis->hDC, brOld);
-        SelectObject(dis->hDC, pnOld);
-        DeleteObject(br);
-        DeleteObject(pn);
-
-        // Draw a 5-pip die face (top-left, top-right, center,
-        // bottom-left, bottom-right) â€” works on any GDI font.
-        SetBkMode(dis->hDC, TRANSPARENT);
-        HBRUSH dotBr = CreateSolidBrush(txtC);
-        HBRUSH dotOld = (HBRUSH)SelectObject(dis->hDC, dotBr);
-        HPEN   dotPn  = CreatePen(PS_SOLID, 1, txtC);
-        HPEN   dotPnO = (HPEN)SelectObject(dis->hDC, dotPn);
-        int cx = (rc.left + rc.right) / 2;
-        int cy = (rc.top  + rc.bottom) / 2;
-        int r  = 2;
-        int dx = (rc.right - rc.left) / 4;
-        int dy = (rc.bottom - rc.top) / 4;
-        auto pip = [&](int x, int y) {
-            Ellipse(dis->hDC, x - r, y - r, x + r + 1, y + r + 1);
-        };
-        pip(cx - dx, cy - dy);
-        pip(cx + dx, cy - dy);
-        pip(cx,      cy);
-        pip(cx - dx, cy + dy);
-        pip(cx + dx, cy + dy);
-        SelectObject(dis->hDC, dotOld);
-        SelectObject(dis->hDC, dotPnO);
-        DeleteObject(dotBr);
-        DeleteObject(dotPn);
-    }
-
-    // Owner-draw a curved-arrow undo/redo button. `undo` selects ↶, else ↷.
-    void drawArrowButton(DRAWITEMSTRUCT* dis, bool undo) {
-        RECT rc = dis->rcItem;
-        bool pressed = (dis->itemState & ODS_SELECTED) != 0;
-        COLORREF fill = pressed ? kColControlHi : kColControl;
-        HBRUSH br = CreateSolidBrush(fill);
-        HPEN   pn = CreatePen(PS_SOLID, 1, kColTextDim);
-        HBRUSH brOld = (HBRUSH)SelectObject(dis->hDC, br);
-        HPEN   pnOld = (HPEN)SelectObject(dis->hDC, pn);
-        RoundRect(dis->hDC, rc.left, rc.top, rc.right, rc.bottom, 5, 5);
-        SelectObject(dis->hDC, brOld);
-        SelectObject(dis->hDC, pnOld);
-        DeleteObject(br); DeleteObject(pn);
-
-        SetBkMode(dis->hDC, TRANSPARENT);
-        SetTextColor(dis->hDC, kColWhite);
-        HFONT of = (HFONT)SelectObject(dis->hDC, fontBold);
-        const wchar_t* glyph = undo ? L"\u21B6" : L"\u21B7";
-        DrawTextW(dis->hDC, glyph, 1, &rc,
-                  DT_CENTER | DT_VCENTER | DT_SINGLELINE);
-        SelectObject(dis->hDC, of);
-    }
-
-    // Owner-draw a small padlock toggle. `locked` = closed shackle, accent
-    // fill; unlocked = open shackle, neutral fill.
-    void drawLockButton(DRAWITEMSTRUCT* dis, bool locked) {
-        RECT rc = dis->rcItem;
-        bool pressed = (dis->itemState & ODS_SELECTED) != 0;
-        COLORREF fill = locked
-            ? (pressed ? kColAccentDark : kColAccent)
-            : (pressed ? kColControlHi  : kColControl);
-        COLORREF edge = locked ? kColAccent : kColTextDim;
-        COLORREF glyph = locked ? kColWhite : kColTextDim;
-
-        HBRUSH br = CreateSolidBrush(fill);
-        HPEN   pn = CreatePen(PS_SOLID, 1, edge);
-        HBRUSH brOld = (HBRUSH)SelectObject(dis->hDC, br);
-        HPEN   pnOld = (HPEN)SelectObject(dis->hDC, pn);
-        RoundRect(dis->hDC, rc.left, rc.top, rc.right, rc.bottom, 5, 5);
-        SelectObject(dis->hDC, brOld);
-        SelectObject(dis->hDC, pnOld);
-        DeleteObject(br);
-        DeleteObject(pn);
-
-        // Draw padlock glyph centered.
-        int w = rc.right - rc.left;
-        int h = rc.bottom - rc.top;
-        int cx = rc.left + w / 2;
-        int cy = rc.top  + h / 2;
-        int bodyW = std::max(8, w / 2);
-        int bodyH = std::max(6, h / 3);
-        int bodyT = cy + 1;                          // body top
-        int bodyL = cx - bodyW / 2;
-        int bodyR = bodyL + bodyW;
-        int bodyB = bodyT + bodyH;
-        int archR = bodyW / 2 - 1;                   // shackle radius
-        int archCx = cx;
-        int archCy = bodyT;
-
-        HPEN gPen   = CreatePen(PS_SOLID, 2, glyph);
-        HPEN gPenO  = (HPEN)SelectObject(dis->hDC, gPen);
-        HBRUSH gBr  = CreateSolidBrush(glyph);
-        HBRUSH gBrO = (HBRUSH)SelectObject(dis->hDC, gBr);
-
-        // Body (filled rounded rect).
-        RoundRect(dis->hDC, bodyL, bodyT, bodyR, bodyB, 3, 3);
-
-        // Shackle (arc above the body, half circle).
-        SelectObject(dis->hDC, GetStockObject(NULL_BRUSH));
-        if (locked) {
-            // Closed shackle: half circle anchored on body top.
-            Arc(dis->hDC,
-                archCx - archR, archCy - archR,
-                archCx + archR, archCy + archR,
-                archCx - archR, archCy,
-                archCx + archR, archCy);
-        } else {
-            // Open shackle: rotated arc â€” left side detached, right side
-            // attached. Draw an arc from ~190Â° to ~10Â° (open at left).
-            Arc(dis->hDC,
-                archCx - archR + 2, archCy - archR,
-                archCx + archR + 2, archCy + archR,
-                archCx + archR + 2, archCy,
-                archCx - archR + 2, archCy);
-        }
-
-        SelectObject(dis->hDC, gBrO);
-        SelectObject(dis->hDC, gPenO);
-        DeleteObject(gPen);
-        DeleteObject(gBr);
-    }
-
-    // Owner-draw a combobox item (Omnisphere-style dark dropdown).
-    void drawComboItem(DRAWITEMSTRUCT* dis) {
-        if ((int)dis->itemID < 0) {
-            // Empty / no selection: just clear.
-            FillRect(dis->hDC, &dis->rcItem, brBg);
-            return;
-        }
-        bool selected = (dis->itemState & ODS_SELECTED) != 0;
-        bool isEdit   = (dis->itemState & ODS_COMBOBOXEDIT) != 0;
-        COLORREF bg = isEdit  ? kColControl
-                    : selected ? kColAccentDark
-                               : kColPanel;
-        HBRUSH brI = CreateSolidBrush(bg);
-        FillRect(dis->hDC, &dis->rcItem, brI);
-        DeleteObject(brI);
-
-        // Subtle separator between items
-        if (!isEdit && !selected) {
-            HPEN pn = CreatePen(PS_SOLID, 1, kColBorder);
-            HPEN po = (HPEN)SelectObject(dis->hDC, pn);
-            MoveToEx(dis->hDC, dis->rcItem.left + 4, dis->rcItem.bottom - 1, nullptr);
-            LineTo(dis->hDC, dis->rcItem.right - 4, dis->rcItem.bottom - 1);
-            SelectObject(dis->hDC, po);
-            DeleteObject(pn);
-        }
-
-        // -- Compatibility color dot (Mode ↔ Prog) ----------------------------
-        // Identify which combo is being drawn and look up the current selection
-        // of the other combo to derive the compat rating.
-        int compatVal = 0; // 0=neutral 1=green 2=red
-        bool isModeCmb = (dis->CtlID == (UINT)(kIdBase + mm::kParamMode));
-        bool isProgCmb = (dis->CtlID == (UINT)kIdProg);
-        if (isModeCmb && hProgCombo) {
-            int curProg = (int)SendMessageW(hProgCombo, CB_GETCURSEL, 0, 0);
-            if (curProg != CB_ERR)
-                compatVal = mm::mode_prog_compat((int)dis->itemID, curProg);
-        } else if (isProgCmb && hCtrl[mm::kParamMode]) {
-            int curMode = (int)SendMessageW(hCtrl[mm::kParamMode], CB_GETCURSEL, 0, 0);
-            if (curMode != CB_ERR)
-                compatVal = mm::mode_prog_compat(curMode, (int)dis->itemID);
-        }
-
-        // Draw a small filled circle on the right edge of the item.
-        if (compatVal != 0) {
-            COLORREF dotCol = (compatVal == 1)
-                ? RGB(72, 205, 72)   // green  = recommended
-                : RGB(220, 65, 65);  // red    = discouraged
-            int itemH   = dis->rcItem.bottom - dis->rcItem.top;
-            int dotR    = 4;
-            int dotX    = dis->rcItem.right - 12;
-            int dotY    = dis->rcItem.top  + itemH / 2;
-            HBRUSH brDot = CreateSolidBrush(dotCol);
-            HBRUSH brOld = (HBRUSH)SelectObject(dis->hDC, brDot);
-            HPEN   pnOld = (HPEN)SelectObject(dis->hDC,
-                               CreatePen(PS_SOLID, 1, dotCol));
-            Ellipse(dis->hDC,
-                    dotX - dotR, dotY - dotR,
-                    dotX + dotR, dotY + dotR);
-            DeleteObject(SelectObject(dis->hDC, pnOld));
-            SelectObject(dis->hDC, brOld);
-            DeleteObject(brDot);
-        }
-        // ---------------------------------------------------------------------
-
-        wchar_t txt[256] = {};
-        SendMessageW(dis->hwndItem, CB_GETLBTEXT, dis->itemID, (LPARAM)txt);
-        SetBkMode(dis->hDC, TRANSPARENT);
-        SetTextColor(dis->hDC, selected ? kColWhite : kColText);
-        HFONT old = (HFONT)SelectObject(dis->hDC, fontReg);
-        RECT rcText = dis->rcItem;
-        rcText.left += 8;
-        rcText.right -= (compatVal != 0) ? 20 : 4; // leave room for dot
-        DrawTextW(dis->hDC, txt, -1, &rcText,
-                  DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
-        SelectObject(dis->hDC, old);
-    }
-
-    void createControls() {
-        HINSTANCE hi = g_hInst;
-
-        // ---------- Param rows (Key/Mode/Octave/Subdiv/Density/Seed/NoteLen)
-        for (int i = 0; i < (int)mm::kParamCount; ++i) {
-            wchar_t wname[64];
-            MultiByteToWideChar(CP_UTF8, 0, mm::kParamDefs[i].name, -1, wname, 64);
-            HWND lbl = CreateWindowW(L"STATIC", wname,
-                WS_CHILD | WS_VISIBLE | SS_LEFT,
-                0, 0, kLabelW, 20, hWnd, nullptr, hi, nullptr);
-            SendMessageW(lbl, WM_SETFONT, (WPARAM)fontReg, TRUE);
-            hLabel[i] = lbl;
-
-            int ctrlId = kIdBase + i;
-            HWND ctrl = nullptr;
-            if (mm::kParamDefs[i].is_stepped) {
-                ctrl = CreateWindowW(L"COMBOBOX", L"",
-                    WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST | CBS_OWNERDRAWFIXED |
-                    CBS_HASSTRINGS | WS_VSCROLL | WS_TABSTOP,
-                    0, 0, kCtrlW, 220, hWnd,
-                    (HMENU)(LONG_PTR)ctrlId, hi, nullptr);
-                fillCombo(i, ctrl);
-            } else {
-                // Custom knob widget for Density / NoteLen
-                ctrl = KnobWidget::create(hWnd, ctrlId, 0, 0, kKnobSize, kKnobSize);
-            }
-            if (ctrl && mm::kParamDefs[i].is_stepped)
-                SendMessageW(ctrl, WM_SETFONT, (WPARAM)fontReg, TRUE);
-            hCtrl[i] = ctrl;
-
-            // Stepped params already display their value inside the
-            // combobox â€“ don't add a duplicated value label on the right.
-            if (mm::kParamDefs[i].is_stepped) {
-                hValue[i] = nullptr;
-            } else {
-                HWND val = CreateWindowW(L"STATIC", L"",
-                    WS_CHILD | WS_VISIBLE | SS_LEFT,
-                    0, 0, kValueW, 20, hWnd, nullptr, hi, nullptr);
-                SendMessageW(val, WM_SETFONT, (WPARAM)fontBold, TRUE);
-                hValue[i] = val;
-            }
-        }
-
-        // ---------- Sound (waveform) row
-        hWaveLabel = CreateWindowW(L"STATIC", L"Instrument",
-            WS_CHILD | WS_VISIBLE | SS_LEFT,
-            0, 0, kLabelW, 20, hWnd, nullptr, hi, nullptr);
-        SendMessageW(hWaveLabel, WM_SETFONT, (WPARAM)fontReg, TRUE);
-        hWaveCombo = CreateWindowW(L"COMBOBOX", L"",
-            WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST | CBS_OWNERDRAWFIXED |
-            CBS_HASSTRINGS | WS_VSCROLL | WS_TABSTOP,
-            0, 0, kCtrlW + kValueW, 320, hWnd,
-            (HMENU)(LONG_PTR)kIdWave, hi, nullptr);
-        SendMessageW(hWaveCombo, WM_SETFONT, (WPARAM)fontReg, TRUE);
-        // Items are populated per-style in populateInstrumentCombo().
-        populateInstrumentCombo(plugin->getStyleType());
-
-        // ---------- Progression row
-        hProgLabel = CreateWindowW(L"STATIC", L"Progr.",
-            WS_CHILD | WS_VISIBLE | SS_LEFT,
-            0, 0, kLabelW, 20, hWnd, nullptr, hi, nullptr);
-        SendMessageW(hProgLabel, WM_SETFONT, (WPARAM)fontReg, TRUE);
-        hProgCombo = CreateWindowW(L"COMBOBOX", L"",
-            WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST | CBS_OWNERDRAWFIXED |
-            CBS_HASSTRINGS | WS_VSCROLL | WS_TABSTOP,
-            0, 0, kCtrlW + kValueW, 260, hWnd,
-            (HMENU)(LONG_PTR)kIdProg, hi, nullptr);
-        SendMessageW(hProgCombo, WM_SETFONT, (WPARAM)fontReg, TRUE);
-        for (int i = 0; i < mm::kProgressionCount; ++i) {
-            wchar_t wn[96];
-            MultiByteToWideChar(CP_UTF8, 0, mm::kProgressionNames[i], -1, wn, 96);
-            SendMessageW(hProgCombo, CB_ADDSTRING, 0, (LPARAM)wn);
-        }
-        SendMessageW(hProgCombo, CB_SETCURSEL, plugin->getProgType(), 0);
-
-        // ---------- Notes display + Export button
-        hNotesLabel = CreateWindowW(L"STATIC", L"Notes  \u25B8",
-            WS_CHILD | WS_VISIBLE | SS_LEFT,
-            0, 0, 60, 20, hWnd, nullptr, hi, nullptr);
-        SendMessageW(hNotesLabel, WM_SETFONT, (WPARAM)fontReg, TRUE);
-
-        hNoteDisplay = CreateWindowW(L"STATIC", L"\u2014",
-            WS_CHILD | WS_VISIBLE | SS_LEFT,
-            0, 0, kViewWidth - 2 * kPadX - 64, 20, hWnd, nullptr, hi, nullptr);
-        SendMessageW(hNoteDisplay, WM_SETFONT, (WPARAM)fontMono, TRUE);
-
-        hExportBtn = CreateWindowW(L"BUTTON", L"EXPORT SESSION  \u2192  MIDI",
-            WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_OWNERDRAW | WS_TABSTOP,
-            0, 0, 100, kButtonH, hWnd,
-            (HMENU)(LONG_PTR)kIdExport, hi, nullptr);
-        SendMessageW(hExportBtn, WM_SETFONT, (WPARAM)fontBold, TRUE);
-
-        hExportWavBtn = CreateWindowW(L"BUTTON", L"EXPORT AUDIO  \u2192  WAV",
-            WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_OWNERDRAW | WS_TABSTOP,
-            0, 0, 100, kButtonH, hWnd,
-            (HMENU)(LONG_PTR)kIdExportWav, hi, nullptr);
-        SendMessageW(hExportWavBtn, WM_SETFONT, (WPARAM)fontBold, TRUE);
-
-        hSavePresetBtn = CreateWindowW(L"BUTTON", L"SAVE PRESET",
-            WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_OWNERDRAW | WS_TABSTOP,
-            0, 0, 100, kButtonH, hWnd,
-            (HMENU)(LONG_PTR)kIdSavePreset, hi, nullptr);
-        SendMessageW(hSavePresetBtn, WM_SETFONT, (WPARAM)fontBold, TRUE);
-
-        hLoadPresetBtn = CreateWindowW(L"BUTTON", L"LOAD PRESET",
-            WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_OWNERDRAW | WS_TABSTOP,
-            0, 0, 100, kButtonH, hWnd,
-            (HMENU)(LONG_PTR)kIdLoadPreset, hi, nullptr);
-        SendMessageW(hLoadPresetBtn, WM_SETFONT, (WPARAM)fontBold, TRUE);
-
-        // ---------- LISTEN (Auto-Key) toggle in the header
-        hAutoBtn = CreateWindowW(L"BUTTON",
-            plugin->getAutoKey() ? L"LISTEN  \u25CF  ON" : L"LISTEN  \u25CB  OFF",
-            WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_OWNERDRAW | WS_TABSTOP,
-            0, 0, 140, 26, hWnd,
-            (HMENU)(LONG_PTR)kIdAuto, hi, nullptr);
-        SendMessageW(hAutoBtn, WM_SETFONT, (WPARAM)fontBold, TRUE);
-
-        // ---------- Dice button: randomize Seed of the active style
-        hDiceBtn = CreateWindowW(L"BUTTON", L"\U0001F3B2",
-            WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_OWNERDRAW | WS_TABSTOP,
-            0, 0, 28, 28, hWnd,
-            (HMENU)(LONG_PTR)kIdDice, hi, nullptr);
-        SendMessageW(hDiceBtn, WM_SETFONT, (WPARAM)fontBold, TRUE);
-
-        // ---------- Piano: "MÃ©lodie main droite" toggle (BS_AUTOCHECKBOX)
-        hPianoMelChk = CreateWindowW(L"BUTTON", L"M\u00e9lodie",
-            WS_CHILD | BS_AUTOCHECKBOX | WS_TABSTOP,
-            0, 0, 120, 22, hWnd,
-            (HMENU)(LONG_PTR)kIdPianoMel, hi, nullptr);
-        SendMessageW(hPianoMelChk, WM_SETFONT, (WPARAM)fontReg, TRUE);
-
-        // ---------- Piano: "Accords" toggle
-        hPianoChordChk = CreateWindowW(L"BUTTON", L"Accords",
-            WS_CHILD | BS_AUTOCHECKBOX | WS_TABSTOP,
-            0, 0, 120, 22, hWnd,
-            (HMENU)(LONG_PTR)kIdPianoChord, hi, nullptr);
-        SendMessageW(hPianoChordChk, WM_SETFONT, (WPARAM)fontReg, TRUE);
-
-        // ---------- Percussion: rhythm pattern picker
-        hPercRhyLabel = CreateWindowW(L"STATIC", L"Rythme",
-            WS_CHILD | SS_LEFT,
-            0, 0, kLabelW, 20, hWnd, nullptr, hi, nullptr);
-        SendMessageW(hPercRhyLabel, WM_SETFONT, (WPARAM)fontReg, TRUE);
-        hPercRhyCombo = CreateWindowW(L"COMBOBOX", L"",
-            WS_CHILD | CBS_DROPDOWNLIST | CBS_OWNERDRAWFIXED |
-            CBS_HASSTRINGS | WS_VSCROLL | WS_TABSTOP,
-            0, 0, 200, 220, hWnd,
-            (HMENU)(LONG_PTR)kIdPercRhy, hi, nullptr);
-        SendMessageW(hPercRhyCombo, WM_SETFONT, (WPARAM)fontReg, TRUE);
-        for (int i = 0; i < mm::kDrumPatternCount; ++i) {
-            wchar_t wn[64]; MultiByteToWideChar(CP_UTF8, 0,
-                mm::kDrumPatterns[i].name, -1, wn, 64);
-            SendMessageW(hPercRhyCombo, CB_ADDSTRING, 0, (LPARAM)wn);
-        }
-        SendMessageW(hPercRhyCombo, CB_SETCURSEL, 0, 0);
-
-        // ---------- Volume row (per-style SoundFont channel volume)
-        hVolLabel = CreateWindowW(L"STATIC", L"Volume",
-            WS_CHILD | WS_VISIBLE | SS_LEFT,
-            0, 0, kLabelW, 20, hWnd, nullptr, hi, nullptr);
-        SendMessageW(hVolLabel, WM_SETFONT, (WPARAM)fontReg, TRUE);
-        hVolSlider = CreateWindowW(TRACKBAR_CLASS, L"",
-            WS_CHILD | WS_VISIBLE | TBS_HORZ | TBS_NOTICKS | WS_TABSTOP,
-            0, 0, kCtrlW, 24, hWnd,
-            (HMENU)(LONG_PTR)kIdVol, hi, nullptr);
-        SendMessageW(hVolSlider, TBM_SETRANGE, TRUE, MAKELONG(0, 200));
-        SendMessageW(hVolSlider, TBM_SETPOS, TRUE,
-            (LPARAM)(int)std::round(plugin->sfVolumePerStyle[plugin->getStyleType()] * 100.0f));
-        hVolValue = CreateWindowW(L"STATIC", L"",
-            WS_CHILD | WS_VISIBLE | SS_LEFT,
-            0, 0, kValueW, 20, hWnd, nullptr, hi, nullptr);
-        SendMessageW(hVolValue, WM_SETFONT, (WPARAM)fontBold, TRUE);
-        refreshVolValue();
-
-        // ---------- Humanize knob (per-style random timing jitter) ----------
-        hHumanizeLabel = CreateWindowW(L"STATIC", L"Humanize",
-            WS_CHILD | WS_VISIBLE | SS_LEFT,
-            0, 0, kLabelW, 20, hWnd, nullptr, hi, nullptr);
-        SendMessageW(hHumanizeLabel, WM_SETFONT, (WPARAM)fontReg, TRUE);
-        hHumanizeKnob = KnobWidget::create(hWnd, kIdHumanize, 0, 0, kKnobSize, kKnobSize);
-        { auto* kw = reinterpret_cast<KnobWidget*>(GetWindowLongPtrW(hHumanizeKnob, GWLP_USERDATA));
-          if (kw) { kw->posDefault = 0;
-            kw->setPos((int)std::round(plugin->humanizePerStyle[plugin->getStyleType()] * 1000.0f)); } }
-        hHumanizeValue = CreateWindowW(L"STATIC", L"",
-            WS_CHILD | WS_VISIBLE | SS_CENTER,
-            0, 0, kValueW, 20, hWnd, nullptr, hi, nullptr);
-        SendMessageW(hHumanizeValue, WM_SETFONT, (WPARAM)fontBold, TRUE);
-        refreshHumanizeValue();
-
-        // ---------- Retard knob (per-style groove lag) ----------------------
-        hRetardLabel = CreateWindowW(L"STATIC", L"Retard",
-            WS_CHILD | WS_VISIBLE | SS_LEFT,
-            0, 0, kLabelW, 20, hWnd, nullptr, hi, nullptr);
-        SendMessageW(hRetardLabel, WM_SETFONT, (WPARAM)fontReg, TRUE);
-        hRetardKnob = KnobWidget::create(hWnd, kIdRetard, 0, 0, kKnobSize, kKnobSize);
-        { auto* kw = reinterpret_cast<KnobWidget*>(GetWindowLongPtrW(hRetardKnob, GWLP_USERDATA));
-          if (kw) { kw->posDefault = 0;
-            kw->setPos((int)std::round(plugin->retardPerStyle[plugin->getStyleType()] * 1000.0f)); } }
-        hRetardValue = CreateWindowW(L"STATIC", L"",
-            WS_CHILD | WS_VISIBLE | SS_CENTER,
-            0, 0, kValueW, 20, hWnd, nullptr, hi, nullptr);
-        SendMessageW(hRetardValue, WM_SETFONT, (WPARAM)fontBold, TRUE);
-        refreshRetardValue();
-
-        // ---------- Lock buttons (Mode / Progression / Subdiv) -----------
-        // Owner-drawn padlock toggles broadcasting their value to all tabs
-        // when locked. Created here, positioned in applyVisibilityForStyle.
-        auto makeLock = [&](int id) {
-            HWND b = CreateWindowW(L"BUTTON", L"",
-                WS_CHILD | BS_PUSHBUTTON | BS_OWNERDRAW | WS_TABSTOP,
-                0, 0, 24, 24, hWnd,
-                (HMENU)(LONG_PTR)id, hi, nullptr);
-            return b;
-        };
-        hLockMode   = makeLock(kIdLockMode);
-        hLockProg   = makeLock(kIdLockProg);
-        hLockSubdiv = makeLock(kIdLockSubdiv);
-
-        // ---------- Global: Mesure (time signature numerator) combo
-        hMeterCombo = CreateWindowW(L"COMBOBOX", L"",
-            WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST | WS_TABSTOP,
-            kViewWidth - kPadX - 88, 14, 88, 180, hWnd,
-            (HMENU)(LONG_PTR)kIdMeter, hi, nullptr);
-        SendMessageW(hMeterCombo, WM_SETFONT, (WPARAM)fontReg, TRUE);
-        static const wchar_t* meterLabels[] = {
-            L"Auto", L"2/4", L"3/4", L"4/4", L"5/4", L"6/4", L"7/4"
-        };
-        for (auto* lbl : meterLabels)
-            SendMessageW(hMeterCombo, CB_ADDSTRING, 0, (LPARAM)lbl);
-        // Restore saved override: 0=Auto, 2=2/4 → index 1, 3→2 … 7→6
-        int meterIdx = 0;
-        if (plugin->beatsPerBarOverride >= 2 && plugin->beatsPerBarOverride <= 7)
-            meterIdx = plugin->beatsPerBarOverride - 1; // Auto=0, 2/4=1...
-        SendMessageW(hMeterCombo, CB_SETCURSEL, meterIdx, 0);
-
-        // ---- Header: global section combo ----
-        hSectionCombo = CreateWindowW(L"COMBOBOX", L"",
-            WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST | WS_TABSTOP,
-            508, 14, 130, 200, hWnd, (HMENU)(LONG_PTR)kIdSection, hi, nullptr);
-        SendMessageW(hSectionCombo, WM_SETFONT, (WPARAM)fontReg, TRUE);
-        { const wchar_t* s0[] = { L"Intro", L"Verse", L"Chorus", L"Bridge", L"Outro" };
-          for (auto* sl : s0) SendMessageW(hSectionCombo, CB_ADDSTRING, 0, (LPARAM)sl); }
-        SendMessageW(hSectionCombo, CB_SETCURSEL,
-            std::clamp(plugin->currentSection.load(std::memory_order_relaxed), 0, 4), 0);
-
-        // ---- Per-style: start-bar delay ----
-        hStartBarLabel = CreateWindowW(L"STATIC", L"Debut",
-            WS_CHILD | SS_LEFT, 0, 0, 1, 1, hWnd, nullptr, hi, nullptr);
-        SendMessageW(hStartBarLabel, WM_SETFONT, (WPARAM)fontReg, TRUE);
-        hStartBarCombo = CreateWindowW(L"COMBOBOX", L"",
-            WS_CHILD | CBS_DROPDOWNLIST | WS_TABSTOP,
-            0, 0, 1, 200, hWnd, (HMENU)(LONG_PTR)kIdStartBar, hi, nullptr);
-        SendMessageW(hStartBarCombo, WM_SETFONT, (WPARAM)fontReg, TRUE);
-        { const wchar_t* s1[] = { L"0 bar", L"+1 bar", L"+2 bars", L"+4 bars", L"+8 bars" };
-          for (auto* sl : s1) SendMessageW(hStartBarCombo, CB_ADDSTRING, 0, (LPARAM)sl); }
-        { static constexpr int kSBV[] = { 0,1,2,4,8 };
-          int sv = plugin->startBarPerStyle[plugin->getStyleType()];
-          int si = 0; for (int k=0;k<5;k++) if (kSBV[k]==sv) si=k;
-          SendMessageW(hStartBarCombo, CB_SETCURSEL, si, 0); }
-
-        // ---------- Miniature horizontal piano roll -------------------------
-        ensurePRClass();
-        hPianoRoll = CreateWindowExW(0, kPRClass, L"",
-            WS_CHILD | WS_VISIBLE,
-            kPadX, 0, kViewWidth - 2 * kPadX, kPRHeight,
-            hWnd, nullptr, g_hInst, nullptr);
-        if (hPianoRoll)
-            SetWindowLongPtrW(hPianoRoll, GWLP_USERDATA, (LONG_PTR)this);
-
-        // ---------- Undo / Redo buttons (visible in editor mode only) ----
-        hUndoBtn = CreateWindowW(L"BUTTON", L"\u21B6",
-            WS_CHILD | BS_PUSHBUTTON | BS_OWNERDRAW | WS_TABSTOP,
-            0, 0, 28, 24, hWnd,
-            (HMENU)(LONG_PTR)kIdUndo, hi, nullptr);
-        SendMessageW(hUndoBtn, WM_SETFONT, (WPARAM)fontBold, TRUE);
-        hRedoBtn = CreateWindowW(L"BUTTON", L"\u21B7",
-            WS_CHILD | BS_PUSHBUTTON | BS_OWNERDRAW | WS_TABSTOP,
-            0, 0, 28, 24, hWnd,
-            (HMENU)(LONG_PTR)kIdRedo, hi, nullptr);
-        SendMessageW(hRedoBtn, WM_SETFONT, (WPARAM)fontBold, TRUE);
-
-        applyVisibilityForStyle(plugin->getStyleType());
-    }
-
-    // -------------------------------------------------------------------------
-    // Lay out the visible widgets into 3 sections + tabs at top + bottom export
-    //   Tabs (header)  : 5 instruments selector
-    //   1. SOUND       : Son
-    //   2. RYTHME      : Subdiv, Density (knob), NoteLen (knob)
-    //   3. HARMONIE    : Mode, Progr., Seed
-    //   Bottom         : Notes display + Export button
-    //
-    // Key is always hidden (trigger note pitch fixes the tonal centre).
-    // Octave is shown as an offset control (+0, +1, +2, -1).
-    // -------------------------------------------------------------------------
-    void applyVisibilityForStyle(int style) {
-        bool isPerc  = (style == 3);
-        bool isPiano = (style == 5);
-        bool showMode    = !isPerc;
-        bool showNoteLen = !isPerc;
-        bool showProg    = !isPerc;
-        bool showDensity = !isPerc; // perc rhythm has fixed density (pattern)
-        bool showOctave  = !isPerc;
-
-        auto hideRow = [&](HWND lbl, HWND ctl, HWND val) {
-            if (lbl) ShowWindow(lbl, SW_HIDE);
-            if (ctl) ShowWindow(ctl, SW_HIDE);
-            if (val) ShowWindow(val, SW_HIDE);
-        };
-        for (int i = 0; i < (int)mm::kParamCount; ++i)
-            hideRow(hLabel[i], hCtrl[i], hValue[i]);
-        hideRow(hWaveLabel, hWaveCombo, nullptr);
-        hideRow(hProgLabel, hProgCombo, nullptr);
-        hideRow(hVolLabel, hVolSlider, hVolValue);
-        hideRow(hHumanizeLabel, hHumanizeKnob, hHumanizeValue);
-        hideRow(hRetardLabel, hRetardKnob, hRetardValue);
-        if (hPianoMelChk)  ShowWindow(hPianoMelChk,  SW_HIDE);
-        if (hPianoChordChk) ShowWindow(hPianoChordChk, SW_HIDE);
-        if (hPercRhyLabel) ShowWindow(hPercRhyLabel, SW_HIDE);
-        if (hPercRhyCombo) ShowWindow(hPercRhyCombo, SW_HIDE);
-        if (hLockMode)     ShowWindow(hLockMode,     SW_HIDE);
-        if (hLockProg)     ShowWindow(hLockProg,     SW_HIDE);
-        if (hLockSubdiv)   ShowWindow(hLockSubdiv,   SW_HIDE);
-        if (hStartBarLabel) ShowWindow(hStartBarLabel, SW_HIDE);
-        if (hStartBarCombo) ShowWindow(hStartBarCombo, SW_HIDE);
-
-        // ============ EDITOR MODE ============================================
-        // Hide all parameter UI, expand the piano roll across the full content
-        // area, show undo/redo buttons. Tabs and titles remain visible.
-        if (viewMode == 1) {
-            if (hAutoBtn)        ShowWindow(hAutoBtn,        SW_HIDE);
-            if (hMeterCombo)     ShowWindow(hMeterCombo,     SW_HIDE);
-            if (hSectionCombo)   ShowWindow(hSectionCombo,   SW_HIDE);
-            if (hExportBtn)      ShowWindow(hExportBtn,      SW_HIDE);
-            if (hExportWavBtn)   ShowWindow(hExportWavBtn,   SW_HIDE);
-            if (hSavePresetBtn)  ShowWindow(hSavePresetBtn,  SW_HIDE);
-            if (hLoadPresetBtn)  ShowWindow(hLoadPresetBtn,  SW_HIDE);
-            for (int i = 0; i < 4; ++i) { sectionY[i] = 0; sectionX[i] = 0; sectionW[i] = 0; }
-
-            const int yTopE = kHeaderH + kTabsH + kSectionGap;
-            int prX = kPadX;
-            int prY = yTopE;
-            int prWi = kViewWidth - 2 * kPadX;
-            int prHe = kViewHeight - yTopE - kSectionGap;
-            if (hPianoRoll) {
-                MoveWindow(hPianoRoll, prX, prY, prWi, prHe, TRUE);
-                ShowWindow(hPianoRoll, SW_SHOW);
-            }
-            if (hUndoBtn) {
-                MoveWindow(hUndoBtn, prX + prWi - 64, prY - 30, 28, 24, TRUE);
-                ShowWindow(hUndoBtn, SW_SHOW);
-            }
-            if (hRedoBtn) {
-                MoveWindow(hRedoBtn, prX + prWi - 32, prY - 30, 28, 24, TRUE);
-                ShowWindow(hRedoBtn, SW_SHOW);
-            }
-            InvalidateRect(hWnd, nullptr, TRUE);
-            return;
-        }
-        // Params mode: hide editor-only widgets
-        if (hUndoBtn) ShowWindow(hUndoBtn, SW_HIDE);
-        if (hRedoBtn) ShowWindow(hRedoBtn, SW_HIDE);
-
-        // Place the LISTEN toggle in the header between Section and Mesure combos.
-        // Layout (right to left): Mesure(88) gap(8) LISTEN(140) gap(8) Section(130)
-        if (hAutoBtn) {
-            int btnW = 140, btnH = 26;
-            MoveWindow(hAutoBtn, kViewWidth - kPadX - 88 - 8 - btnW,
-                       (kHeaderH - btnH) / 2, btnW, btnH, TRUE);
-            ShowWindow(hAutoBtn, SW_SHOW);
-        }
-
-        // Y where the PARAMÈTRES header ends (drawn at kHeaderH+kTabsH+4, height 22)
-        static constexpr int kParamHdrH = 22;
-        static constexpr int kParamHdrY = kHeaderH + kTabsH + 4;
-        static constexpr int kContentY  = kParamHdrY + kParamHdrH + 4;
-
-        // ---- Collapsed params: show only the piano roll ----
-        if (paramsCollapsed) {
-            if (hExportBtn)    ShowWindow(hExportBtn,    SW_HIDE);
-            if (hExportWavBtn) ShowWindow(hExportWavBtn, SW_HIDE);
-            if (hSavePresetBtn) ShowWindow(hSavePresetBtn, SW_HIDE);
-            if (hLoadPresetBtn) ShowWindow(hLoadPresetBtn, SW_HIDE);
-            for (int i = 0; i < 4; ++i) { sectionY[i] = 0; sectionX[i] = 0; sectionW[i] = 0; }
-            if (hPianoRoll) {
-                int prHe = kViewHeight - kContentY - 4;
-                MoveWindow(hPianoRoll, kPadX, kContentY, kViewWidth - 2 * kPadX, prHe, TRUE);
-                ShowWindow(hPianoRoll, SW_SHOW);
-            }
-            InvalidateRect(hWnd, nullptr, TRUE);
-            return;
-        }
-
-        const int yTop = kContentY;
-
-        // ============ LEFT COLUMN: SOUND + RYTHME ============
-        int yL = yTop;
-
-        // === SOUND ===
-        sectionY[0] = yL; sectionX[0] = kPadX; sectionW[0] = kColumnW;
-        yL += kSectionTitleH;
-        placeRowCol(yL, hWaveLabel, hWaveCombo, nullptr, kPadX, kColumnW, /*spanCtrl=*/true);
-        yL += kRowH;
-        placeRowCol(yL, hVolLabel, hVolSlider, hVolValue, kPadX, kColumnW, false);
-        yL += kRowH;
-        { static constexpr int kSBV[] = { 0,1,2,4,8 };
-          int sv2 = plugin->startBarPerStyle[style];
-          int si2 = 0; for (int k=0;k<5;k++) if (kSBV[k]==sv2) si2=k;
-          if (hStartBarCombo) SendMessageW(hStartBarCombo, CB_SETCURSEL, si2, 0); }
-        placeRowCol(yL, hStartBarLabel, hStartBarCombo, nullptr, kPadX, kColumnW, /*spanCtrl=*/true);
-        yL += kRowH;
-        yL += kSectionGap;
-
-        // === RYTHME ===
-        sectionY[1] = yL; sectionX[1] = kPadX; sectionW[1] = kColumnW;
-        yL += kSectionTitleH;
-        placeRowCol(yL, hLabel[mm::kParamSubdiv], hCtrl[mm::kParamSubdiv], hValue[mm::kParamSubdiv], kPadX, kColumnW, false);
-        // Subdiv lock: at the right edge of the Subdiv row.
-        if (hLockSubdiv) {
-            int lockX = kPadX + kColumnW - 26;
-            MoveWindow(hLockSubdiv, lockX, yL + 4, 24, 24, TRUE);
-            ShowWindow(hLockSubdiv, SW_SHOW);
-            InvalidateRect(hLockSubdiv, nullptr, TRUE);
-        }
-        yL += kRowH;
-        if (showOctave) {
-            placeRowCol(yL, hLabel[mm::kParamOctave], hCtrl[mm::kParamOctave], hValue[mm::kParamOctave], kPadX, kColumnW, false);
-            yL += kRowH;
-        }
-
-        // ============ RIGHT COLUMN: HARMONIE ============
-        int yR = yTop;
-        sectionY[2] = yR; sectionX[2] = kRightColX; sectionW[2] = kColumnW;
-        yR += kSectionTitleH;
-        if (showMode) {
-            placeRowCol(yR, hLabel[mm::kParamMode], hCtrl[mm::kParamMode], hValue[mm::kParamMode], kRightColX, kColumnW, false);
-            if (hLockMode) {
-                int lockX = kRightColX + kColumnW - 26;
-                MoveWindow(hLockMode, lockX, yR + 4, 24, 24, TRUE);
-                ShowWindow(hLockMode, SW_SHOW);
-                InvalidateRect(hLockMode, nullptr, TRUE);
-            }
-            yR += kRowH;
-        }
-        if (showProg) {
-            placeRowCol(yR, hProgLabel, hProgCombo, nullptr, kRightColX, kColumnW, /*spanCtrl=*/true);
-            // Shrink the prog combo to leave space for the padlock.
-            if (hProgCombo && hLockProg) {
-                RECT rc; GetWindowRect(hProgCombo, &rc);
-                POINT pt = { rc.left, rc.top };
-                ScreenToClient(hWnd, &pt);
-                int newW = (rc.right - rc.left) - 30;
-                MoveWindow(hProgCombo, pt.x, pt.y, newW, rc.bottom - rc.top, TRUE);
-                int lockX = kRightColX + kColumnW - 26;
-                MoveWindow(hLockProg, lockX, yR + 4, 24, 24, TRUE);
-                ShowWindow(hLockProg, SW_SHOW);
-                InvalidateRect(hLockProg, nullptr, TRUE);
-            }
-            yR += kRowH;
-        }
-        // Percussion-only: rhythm-pattern picker replaces Mode/Prog rows.
-        if (isPerc && hPercRhyCombo) {
-            placeRowCol(yR, hPercRhyLabel, hPercRhyCombo, nullptr, kRightColX, kColumnW, /*spanCtrl=*/true);
-            // Sync combo selection with this style's stored pattern.
-            int idx = std::clamp(plugin->percRhythmPerStyle[style],
-                                 0, mm::kDrumPatternCount - 1);
-            SendMessageW(hPercRhyCombo, CB_SETCURSEL, idx, 0);
-            yR += kRowH;
-        }
-        placeRowCol(yR, hLabel[mm::kParamSeed], hCtrl[mm::kParamSeed], hValue[mm::kParamSeed], kRightColX, kColumnW, false);
-        // Dice button right next to the Seed control.
-        if (hDiceBtn && hCtrl[mm::kParamSeed]) {
-            RECT rv; GetWindowRect(hCtrl[mm::kParamSeed], &rv);
-            POINT pt = { rv.right, rv.top };
-            ScreenToClient(hWnd, &pt);
-            MoveWindow(hDiceBtn, pt.x + 8, pt.y, 28, 28, TRUE);
-            ShowWindow(hDiceBtn, SW_SHOW);
-        }
-        yR += kRowH;
-        // Piano-only: "Accords" + "Melodie" toggles below the Seed row.
-        if (isPiano) {
-            if (hPianoChordChk) {
-                MoveWindow(hPianoChordChk, kRightColX + kLabelW + 8, yR + 4, 100, 22, TRUE);
-                SendMessageW(hPianoChordChk, BM_SETCHECK,
-                    plugin->pianoChordPerStyle[style] ? BST_CHECKED : BST_UNCHECKED, 0);
-                ShowWindow(hPianoChordChk, SW_SHOW);
-            }
-            if (hPianoMelChk) {
-                MoveWindow(hPianoMelChk, kRightColX + kLabelW + 8 + 108, yR + 4, 100, 22, TRUE);
-                SendMessageW(hPianoMelChk, BM_SETCHECK,
-                    plugin->pianoMelodyPerStyle[style] ? BST_CHECKED : BST_UNCHECKED, 0);
-                ShowWindow(hPianoMelChk, SW_SHOW);
-            }
-            yR += kRowH;
-        }
-        // ============ EXPRESSION section: 2x2 knob grid in right column ============
-        yR += kSectionGap;
-        sectionY[3] = yR; sectionX[3] = kRightColX; sectionW[3] = kColumnW;
-        yR += kSectionTitleH;
-        {
-            // Each half-cell is kColumnW/2 wide (210px):
-            //   label(62) + gap(6) + knob(56) + gap(6) + value(80) = 210
-            const int kHalfW   = kColumnW / 2;
-            const int kSmLbl   = 62;
-            const int kGap     = 6;
-            const int kValW    = kHalfW - kSmLbl - kGap - kKnobSize - kGap; // 80px
-
-            auto placeKnobHalf = [&](int y, int cellX, HWND lbl, HWND knob, HWND val) {
-                if (lbl)  { MoveWindow(lbl,  cellX,                       y + (kKnobSize/2) - 8, kSmLbl, 20, TRUE); ShowWindow(lbl,  SW_SHOW); }
-                if (knob) { MoveWindow(knob, cellX + kSmLbl + kGap,       y, kKnobSize, kKnobSize,            TRUE); ShowWindow(knob, SW_SHOW); }
-                if (val)  { MoveWindow(val,  cellX + kSmLbl + kGap + kKnobSize + kGap, y + (kKnobSize/2) - 8, kValW, 20, TRUE); ShowWindow(val, SW_SHOW); }
-            };
-
-            // Sync knob positions from stored per-style values
-            if (hHumanizeKnob)
-                if (auto* kw = reinterpret_cast<KnobWidget*>(GetWindowLongPtrW(hHumanizeKnob, GWLP_USERDATA)))
-                    kw->setPos((int)std::round(plugin->humanizePerStyle[style] * 1000.0f));
-            if (hRetardKnob)
-                if (auto* kw = reinterpret_cast<KnobWidget*>(GetWindowLongPtrW(hRetardKnob, GWLP_USERDATA)))
-                    kw->setPos((int)std::round(plugin->retardPerStyle[style] * 1000.0f));
-            refreshHumanizeValue();
-            refreshRetardValue();
-
-            // Row 1: Density | NoteLen  (hidden for Perc which has no note lengths)
-            if (showDensity || showNoteLen) {
-                if (showDensity)
-                    placeKnobHalf(yR, kRightColX,           hLabel[mm::kParamDensity], hCtrl[mm::kParamDensity], hValue[mm::kParamDensity]);
-                else
-                    hideRow(hLabel[mm::kParamDensity], hCtrl[mm::kParamDensity], hValue[mm::kParamDensity]);
-                if (showNoteLen)
-                    placeKnobHalf(yR, kRightColX + kHalfW,  hLabel[mm::kParamNoteLen],  hCtrl[mm::kParamNoteLen],  hValue[mm::kParamNoteLen]);
-                else
-                    hideRow(hLabel[mm::kParamNoteLen], hCtrl[mm::kParamNoteLen], hValue[mm::kParamNoteLen]);
-                yR += kKnobSize + 8;
-            }
-
-            // Row 2: Humanize | Retard  (always shown)
-            placeKnobHalf(yR, kRightColX,           hHumanizeLabel, hHumanizeKnob, hHumanizeValue);
-            placeKnobHalf(yR, kRightColX + kHalfW,  hRetardLabel,   hRetardKnob,   hRetardValue);
-            yR += kKnobSize + 8;
-        }
-        // ============ Bottom: piano roll + export (full width) ============
-        int yBot = std::max(yL, yR) + kSectionGap;
-        // Piano roll: full-width, 80px tall
-        if (hPianoRoll) {
-            MoveWindow(hPianoRoll, kPadX, yBot, kViewWidth - 2 * kPadX, kPRHeight, TRUE);
-            ShowWindow(hPianoRoll, SW_SHOW);
-        }
-        // Keep legacy text row hidden (still used by refreshNoteDisplay for non-visual update)
-        if (hNotesLabel)  ShowWindow(hNotesLabel,  SW_HIDE);
-        if (hNoteDisplay) ShowWindow(hNoteDisplay, SW_HIDE);
-        yBot += kPRHeight + 6;
-        if (hExportBtn) {
-            int half = (kViewWidth - 2 * kPadX - 8) / 2;
-            MoveWindow(hExportBtn, kPadX, yBot, half, kButtonH, TRUE);
-            ShowWindow(hExportBtn, SW_SHOW);
-        }
-        if (hExportWavBtn) {
-            int half = (kViewWidth - 2 * kPadX - 8) / 2;
-            MoveWindow(hExportWavBtn, kPadX + half + 8, yBot,
-                       kViewWidth - 2 * kPadX - half - 8, kButtonH, TRUE);
-            ShowWindow(hExportWavBtn, SW_SHOW);
-        }
-        // Row 2: SAVE / LOAD preset (smaller buttons).
-        {
-            int yRow2 = yBot + kButtonH + 6;
-            int hSmall = std::max(22, kButtonH - 8);
-            int half = (kViewWidth - 2 * kPadX - 8) / 2;
-            if (hSavePresetBtn) {
-                MoveWindow(hSavePresetBtn, kPadX, yRow2, half, hSmall, TRUE);
-                ShowWindow(hSavePresetBtn, SW_SHOW);
-            }
-            if (hLoadPresetBtn) {
-                MoveWindow(hLoadPresetBtn, kPadX + half + 8, yRow2,
-                           kViewWidth - 2 * kPadX - half - 8, hSmall, TRUE);
-                ShowWindow(hLoadPresetBtn, SW_SHOW);
-            }
-        }
-
-        InvalidateRect(hWnd, nullptr, TRUE);
-    }
-
-    // Place a label + control (+optional value) inside the given column box.
-    // If spanCtrl is true, the control fills (colW - labelW - 8) (no value column).
-    void placeRowCol(int y, HWND lbl, HWND ctl, HWND val, int colX, int colW, bool spanCtrl) {
-        if (lbl) {
-            MoveWindow(lbl, colX, y + 6, kLabelW, 20, TRUE);
-            ShowWindow(lbl, SW_SHOW);
-        }
-        int cx = colX + kLabelW + 8;
-        int cw = spanCtrl ? (colW - kLabelW - 8) : kCtrlW;
-        if (ctl) {
-            MoveWindow(ctl, cx, y + 4, cw, 24, TRUE);
-            ShowWindow(ctl, SW_SHOW);
-        }
-        if (val && !spanCtrl) {
-            int vx = cx + cw + 8;
-            MoveWindow(val, vx, y + 6, kValueW, 20, TRUE);
-            ShowWindow(val, SW_SHOW);
-        }
-    }
-
-    // Knob variant â€” knob is square (kKnobSize), label on left, value on right.
-    void placeKnobRowCol(int y, HWND lbl, HWND knob, HWND val, int colX) {
-        if (lbl) {
-            MoveWindow(lbl, colX, y + (kKnobSize / 2) - 8, kLabelW, 20, TRUE);
-            ShowWindow(lbl, SW_SHOW);
-        }
-        int cx = colX + kLabelW + 8;
-        if (knob) {
-            MoveWindow(knob, cx, y, kKnobSize, kKnobSize, TRUE);
-            ShowWindow(knob, SW_SHOW);
-        }
-        if (val) {
-            int vx = cx + kKnobSize + 12;
-            MoveWindow(val, vx, y + (kKnobSize / 2) - 8, kValueW, 20, TRUE);
-            ShowWindow(val, SW_SHOW);
-        }
-    }
-
-    // Old single-column wrappers kept for compatibility (not used in 2-col layout).
-    void placeRow(int y, HWND lbl, HWND ctl, HWND val, bool show) {
-        if (!show) return;
-        placeRowCol(y, lbl, ctl, val, kPadX, kViewWidth - 2 * kPadX, false);
-    }
-    void placeKnobRow(int y, HWND lbl, HWND knob, HWND val) {
-        placeKnobRowCol(y, lbl, knob, val, kPadX);
-    }
-
-    void fillCombo(int paramId, HWND combo) {
-        SendMessageW(combo, CB_RESETCONTENT, 0, 0);
-        switch (paramId) {
-            case mm::kParamKey:
-                for (int k = 0; k < 12; ++k) {
-                    wchar_t wn[8]; MultiByteToWideChar(CP_UTF8, 0, mm::kKeyNames[k], -1, wn, 8);
-                    SendMessageW(combo, CB_ADDSTRING, 0, (LPARAM)wn);
-                }
-                break;
-            case mm::kParamMode:
-                for (int m = 0; m < mm::kScaleCount; ++m) {
-                    wchar_t wn[32]; MultiByteToWideChar(CP_UTF8, 0, mm::kModeNames[m], -1, wn, 32);
-                    SendMessageW(combo, CB_ADDSTRING, 0, (LPARAM)wn);
-                }
-                break;
-            case mm::kParamOctave: {
-                // Values 3-6 stored, displayed as offset relative to trigger note
-                // (default=4 → +0, 5 → +1, 6 → +2, 3 → -1)
-                static const wchar_t* octLabels[] = { L"-1 oct", L"+0 (normal)", L"+1 oct", L"+2 oct" };
-                for (auto* lbl : octLabels) SendMessageW(combo, CB_ADDSTRING, 0, (LPARAM)lbl);
-                break;
-            }
-            case mm::kParamSubdiv: {
-                static const wchar_t* labels[] = { L"1/1 (whole)", L"1/2", L"1/4", L"1/8", L"1/16", L"1/32" };
-                for (auto* s : labels) SendMessageW(combo, CB_ADDSTRING, 0, (LPARAM)s);
-                break;
-            }
-            case mm::kParamSeed:
-                for (int s = 0; s <= 999; ++s) {
-                    wchar_t wn[8]; swprintf_s(wn, L"%d", s);
-                    SendMessageW(combo, CB_ADDSTRING, 0, (LPARAM)wn);
-                }
-                break;
-            default: break;
-        }
-    }
-
-    void refreshAll() {
-        for (int i = 0; i < (int)mm::kParamCount; ++i) refreshOne(i);
-    }
-
-    // Rebuild the Instrument combo for the active style and select its
-    // currently stored preset index.
-    void populateInstrumentCombo(int style) {
-        if (!hWaveCombo) return;
-        style = std::clamp(style, 0, 5);
-        SendMessageW(hWaveCombo, CB_RESETCONTENT, 0, 0);
-        const int n = kSfPresetCount[style];
-        for (int i = 0; i < n; ++i) {
-            const SfPreset& p = kSfPresetsByStyle[style][i];
-            if (!p.name || !*p.name) continue;
-            SendMessageW(hWaveCombo, CB_ADDSTRING, 0, (LPARAM)p.name);
-        }
-        int idx = std::clamp(plugin->sfPresetIdxPerStyle[style], 0, n - 1);
-        SendMessageW(hWaveCombo, CB_SETCURSEL, idx, 0);
-    }
-
-    void refreshVolValue() {
-        if (!hVolValue) return;
-        float v = plugin->sfVolumePerStyle[plugin->getStyleType()];
-        wchar_t buf[32];
-        swprintf_s(buf, L"%d %%", (int)std::round(v * 100.0f));
-        SetWindowTextW(hVolValue, buf);
-    }
-
-    void refreshHumanizeValue() {
-        if (!hHumanizeValue) return;
-        float v = plugin->humanizePerStyle[plugin->getStyleType()];
-        wchar_t buf[32];
-        swprintf_s(buf, L"%d %%", (int)std::round(v * 100.0f));
-        SetWindowTextW(hHumanizeValue, buf);
-    }
-
-    void refreshRetardValue() {
-        if (!hRetardValue) return;
-        float v = plugin->retardPerStyle[plugin->getStyleType()];
-        wchar_t buf[32];
-        swprintf_s(buf, L"%d %%", (int)std::round(v * 100.0f));
-        SetWindowTextW(hRetardValue, buf);
-    }
-
-    void refreshOne(int i) {
-        double v = plugin->getActualParamValue(i);
-        if (mm::kParamDefs[i].is_stepped) {
-            int idx = comboIndexFromValue(i, v);
-            SendMessageW(hCtrl[i], CB_SETCURSEL, idx, 0);
-        } else {
-            const auto& d = mm::kParamDefs[i];
-            double norm = (v - d.min_value) / std::max(1e-9, d.max_value - d.min_value);
-            int pos = (int)std::round(norm * 1000.0);
-            wchar_t cls[64] = {};
-            GetClassNameW(hCtrl[i], cls, 64);
-            if (wcscmp(cls, KnobWidget::kClassName) == 0) {
-                auto* kw = reinterpret_cast<KnobWidget*>(GetWindowLongPtrW(hCtrl[i], GWLP_USERDATA));
-                if (kw) kw->setPos(pos);
-            } else {
-                SendMessageW(hCtrl[i], TBM_SETPOS, TRUE, pos);
-            }
-        }
-        updateValueLabel(i, v);
-    }
-
-    void updateValueLabel(int i, double v) {
-        if (!hValue[i]) return;
-        wchar_t buf[64];
-        switch (i) {
-            case mm::kParamKey: {
-                int k = std::clamp((int)std::round(v), 0, 11);
-                wchar_t wn[8]; MultiByteToWideChar(CP_UTF8, 0, mm::kKeyNames[k], -1, wn, 8);
-                swprintf_s(buf, L"%s", wn); break;
-            }
-            case mm::kParamMode: {
-                int m = std::clamp((int)std::round(v), 0, mm::kScaleCount - 1);
-                wchar_t wn[32]; MultiByteToWideChar(CP_UTF8, 0, mm::kModeNames[m], -1, wn, 32);
-                swprintf_s(buf, L"%s", wn); break;
-            }
-            case mm::kParamOctave: swprintf_s(buf, L"%d", (int)std::round(v)); break;
-            case mm::kParamSubdiv: swprintf_s(buf, L"1/%d", mm::normalized_subdiv(v)); break;
-            case mm::kParamDensity: swprintf_s(buf, L"%.0f%%", v * 100.0); break;
-            case mm::kParamNoteLen: swprintf_s(buf, L"%.0f%%", v * 100.0); break;
-            case mm::kParamSeed:    swprintf_s(buf, L"%d", (int)std::round(v)); break;
-            default:                swprintf_s(buf, L"%.3f", v); break;
-        }
-        SetWindowTextW(hValue[i], buf);
-    }
-
-    int comboIndexFromValue(int paramId, double v) {
-        switch (paramId) {
-            case mm::kParamKey:    return std::clamp((int)std::round(v), 0, 11);
-            case mm::kParamMode:   return std::clamp((int)std::round(v), 0, mm::kScaleCount - 1);
-            case mm::kParamOctave: return std::clamp((int)std::round(v) - 3, 0, 3);
-            case mm::kParamSubdiv: {
-                int s = mm::normalized_subdiv(v);
-                if (s == 1)  return 0;
-                if (s == 2)  return 1;
-                if (s == 4)  return 2;
-                if (s == 8)  return 3;
-                if (s == 16) return 4;
-                return 5; // 32
-            }
-            case mm::kParamSeed:   return std::clamp((int)std::round(v), 0, 999);
-            default: return 0;
-        }
-    }
-
-    double valueFromComboIndex(int paramId, int idx) {
-        switch (paramId) {
-            case mm::kParamKey:    return (double)idx;
-            case mm::kParamMode:   return (double)idx;
-            case mm::kParamOctave: return 3.0 + idx;
-            case mm::kParamSubdiv: { static const int s[] = {1,2,4,8,16,32}; return s[std::clamp(idx,0,5)]; }
-            case mm::kParamSeed:   return (double)idx;
-            default: return 0.0;
-        }
-    }
-
-    static void pitchToWstr(int16_t p, wchar_t* out, int len) {
-        static const wchar_t* names[] =
-            {L"C",L"C#",L"D",L"D#",L"E",L"F",L"F#",L"G",L"G#",L"A",L"A#",L"B"};
-        if (p < 0 || p > 127) { swprintf_s(out, len, L"?"); return; }
-        swprintf_s(out, len, L"%s%d", names[p % 12], (p / 12) - 1);
-    }
-
-    void refreshNoteDisplay() {
-        if (!hNoteDisplay || !plugin) return;
-        uint32_t head = plugin->noteHistHead.load(std::memory_order_relaxed);
-        if (head == 0) { SetWindowTextW(hNoteDisplay, L"\u2014"); return; }
-
-        constexpr int N = MelodyMakerVST3::kNoteHistSize;
-        int count = (int)std::min(head, (uint32_t)N);
-        wchar_t buf[128]{};
-        int pos = 0;
-        // oldest to newest, left to right
-        for (int i = count - 1; i >= 0 && pos < 120; --i) {
-            uint32_t idx = (head - 1 - (uint32_t)i + (uint32_t)N * 4) % (uint32_t)N;
-            int16_t pitch = plugin->noteHist[idx];
-            wchar_t nb[8];
-            pitchToWstr(pitch, nb, 8);
-            if (pos > 0) { buf[pos++] = L' '; buf[pos++] = 0xBB; buf[pos++] = L' '; }
-            int nlen = (int)wcslen(nb);
-            wcscpy_s(buf + pos, 128 - pos, nb);
-            pos += nlen;
-        }
-        SetWindowTextW(hNoteDisplay, buf);
-    }
-
-    // -----------------------------------------------------------------------
-    // MIDI export helpers
-    // -----------------------------------------------------------------------
-    static void midiVarLen(std::vector<uint8_t>& b, uint32_t v) {
-        uint8_t buf[4]; int n = 0;
-        do { buf[n++] = (uint8_t)(v & 0x7F); v >>= 7; } while (v);
-        for (int i = n - 1; i >= 0; --i)
-            b.push_back(i > 0 ? (buf[i] | 0x80) : buf[i]);
-    }
-    static void midiBE16(std::vector<uint8_t>& b, uint16_t v) {
-        b.push_back((uint8_t)(v >> 8)); b.push_back((uint8_t)(v & 0xFF));
-    }
-    static void midiBE32(std::vector<uint8_t>& b, uint32_t v) {
-        b.push_back((uint8_t)(v >> 24)); b.push_back((uint8_t)((v >> 16) & 0xFF));
-        b.push_back((uint8_t)((v >> 8) & 0xFF)); b.push_back((uint8_t)(v & 0xFF));
-    }
-
-    // Build a standard MIDI file (format 1) from the given recorded notes.
-    // Returns an empty vector if notes is empty.
-    std::vector<uint8_t> buildMidiBytes(
-            const std::vector<MelodyMakerVST3::RecordedNote>& notes) {
-        static constexpr uint16_t TPQN = 480;
-        if (notes.empty()) return {};
-
-        struct BEv { uint32_t tick; bool isOn; uint8_t pitch; uint8_t vel; };
-        constexpr int kStyles = MelodyMakerVST3::kStyleCount;
-        std::vector<BEv> perStyle[kStyles];
-
-        for (auto& n : notes) {
-            if (n.beatOn < 0.0) continue;
-            int s = std::clamp((int)n.style, 0, kStyles - 1);
-            uint32_t onTick  = (uint32_t)std::round(n.beatOn * TPQN);
-            uint32_t offTick = (uint32_t)std::round((n.beatOn + n.beatLen) * TPQN);
-            if (offTick <= onTick) offTick = onTick + 1;
-            uint8_t vel = (uint8_t)std::clamp((int)std::round(n.vel * 127.f), 1, 127);
-            uint8_t p   = (uint8_t)std::clamp((int)n.pitch, 0, 127);
-            perStyle[s].push_back({onTick,  true,  p, vel});
-            perStyle[s].push_back({offTick, false, p, 0});
-        }
-
-        float bpm = plugin->lastBpm.load(std::memory_order_relaxed);
-        if (bpm < 1.f) bpm = 120.f;
-        uint32_t usPerBeat = (uint32_t)std::round(60000000.0 / bpm);
-
-        auto pushTC = [](std::vector<uint8_t>& midi,
-                         const std::vector<uint8_t>& body) {
-            for (char c : {'M','T','r','k'}) midi.push_back((uint8_t)c);
-            midiBE32(midi, (uint32_t)body.size());
-            midi.insert(midi.end(), body.begin(), body.end());
-        };
-        auto pushName = [](std::vector<uint8_t>& trk, const char* name) {
-            trk.push_back(0x00); trk.push_back(0xFF); trk.push_back(0x03);
-            size_t n = std::strlen(name);
-            midiVarLen(trk, (uint32_t)n);
-            for (size_t i = 0; i < n; ++i) trk.push_back((uint8_t)name[i]);
-        };
-
-        std::vector<uint8_t> tempoTrk;
-        tempoTrk.push_back(0x00); tempoTrk.push_back(0xFF);
-        tempoTrk.push_back(0x58); tempoTrk.push_back(0x04);
-        tempoTrk.push_back(0x04); tempoTrk.push_back(0x02);
-        tempoTrk.push_back(0x18); tempoTrk.push_back(0x08);
-        tempoTrk.push_back(0x00); tempoTrk.push_back(0xFF);
-        tempoTrk.push_back(0x51); tempoTrk.push_back(0x03);
-        tempoTrk.push_back((usPerBeat >> 16) & 0xFF);
-        tempoTrk.push_back((usPerBeat >>  8) & 0xFF);
-        tempoTrk.push_back( usPerBeat        & 0xFF);
-        pushName(tempoTrk, "Midnight Melody Maker");
-        tempoTrk.push_back(0x00); tempoTrk.push_back(0xFF);
-        tempoTrk.push_back(0x2F); tempoTrk.push_back(0x00);
-
-        static const uint8_t kProg[kStyles] = { 0, 46, 33, 0, 12, 0 };
-        static const char* kName[kStyles] = {
-            "Melodie","Harpe","Basse","Percussions","Marimba","Piano"
-        };
-        std::vector<std::vector<uint8_t>> styleTracks;
-        for (int s = 0; s < kStyles; ++s) {
-            auto& evs = perStyle[s];
-            if (evs.empty()) continue;
-            std::sort(evs.begin(), evs.end(), [](const BEv& a, const BEv& b) {
-                return a.tick != b.tick ? a.tick < b.tick : !a.isOn;
-            });
-            std::vector<uint8_t> trk;
-            pushName(trk, kName[s]);
-            uint8_t chan = (s == 3) ? 9 : (uint8_t)std::min(8, s);
-            if (s != 3) {
-                trk.push_back(0x00);
-                trk.push_back(0xC0 | chan);
-                trk.push_back(kProg[s]);
-            }
-            uint32_t prev = 0;
-            for (auto& ev : evs) {
-                midiVarLen(trk, ev.tick - prev); prev = ev.tick;
-                if (ev.isOn) {
-                    trk.push_back(0x90 | chan); trk.push_back(ev.pitch); trk.push_back(ev.vel);
-                } else {
-                    trk.push_back(0x80 | chan); trk.push_back(ev.pitch); trk.push_back(0x00);
-                }
-            }
-            trk.push_back(0x00); trk.push_back(0xFF);
-            trk.push_back(0x2F); trk.push_back(0x00);
-            styleTracks.push_back(std::move(trk));
-        }
-
-        uint16_t numTracks = (uint16_t)(1 + styleTracks.size());
-        std::vector<uint8_t> midi;
-        for (char c : {'M','T','h','d'}) midi.push_back((uint8_t)c);
-        midiBE32(midi, 6); midiBE16(midi, 1);
-        midiBE16(midi, numTracks); midiBE16(midi, TPQN);
-        pushTC(midi, tempoTrk);
-        for (auto& t : styleTracks) pushTC(midi, t);
-        return midi;
-    }
-
-    void doExportMidi() {
-        static constexpr uint16_t TPQN = 480; // ticks per quarter note
-
-        // Snapshot the notes recorded during playback
-        std::vector<MelodyMakerVST3::RecordedNote> notes;
-        {
-            std::lock_guard<std::mutex> lk(plugin->recMtx);
-            notes = plugin->recNotes;
-        }
-
-        if (notes.empty()) {
-            MessageBoxW(hWnd,
-                L"Aucune note enregistr\u00e9e.\n\n"
-                L"Lance Play dans FL Studio avec des notes dans la piano roll,\n"
-                L"laisse g\u00e9n\u00e9rer quelques mesures, stop, puis clique ici.",
-                L"Export MIDI", MB_OK | MB_ICONINFORMATION);
-            return;
-        }
-
-        struct Ev { uint32_t tick; bool isOn; uint8_t pitch; uint8_t vel; };
-
-        // Bucket notes per style (one MIDI track per instrument).
-        constexpr int kStyles = MelodyMakerVST3::kStyleCount; // 5
-        std::vector<Ev> perStyle[kStyles];
-
-        for (auto& n : notes) {
-            if (n.beatOn < 0.0) continue;
-            int s = std::clamp((int)n.style, 0, kStyles - 1);
-            uint32_t onTick  = (uint32_t)std::round(n.beatOn * TPQN);
-            uint32_t offTick = (uint32_t)std::round((n.beatOn + n.beatLen) * TPQN);
-            if (offTick <= onTick) offTick = onTick + 1;
-            uint8_t vel = (uint8_t)std::clamp((int)std::round(n.vel * 127.f), 1, 127);
-            uint8_t p   = (uint8_t)std::clamp((int)n.pitch, 0, 127);
-            perStyle[s].push_back({onTick,  true,  p, vel});
-            perStyle[s].push_back({offTick, false, p, 0});
-        }
-
-        // Embed correct tempo so the MIDI matches the host project BPM
-        float bpm = plugin->lastBpm.load(std::memory_order_relaxed);
-        if (bpm < 1.f) bpm = 120.f;
-        uint32_t usPerBeat = (uint32_t)std::round(60000000.0 / bpm);
-
-        auto pushTrackChunk = [](std::vector<uint8_t>& midi,
-                                 const std::vector<uint8_t>& body) {
-            for (char c : {'M','T','r','k'}) midi.push_back((uint8_t)c);
-            midiBE32(midi, (uint32_t)body.size());
-            midi.insert(midi.end(), body.begin(), body.end());
-        };
-
-        auto pushTrackName = [](std::vector<uint8_t>& trk, const char* name) {
-            trk.push_back(0x00);
-            trk.push_back(0xFF); trk.push_back(0x03);
-            size_t n = std::strlen(name);
-            midiVarLen(trk, (uint32_t)n);
-            for (size_t i = 0; i < n; ++i) trk.push_back((uint8_t)name[i]);
-        };
-
-        // Track 1: tempo / time signature only.
-        std::vector<uint8_t> tempoTrack;
-        // Time signature 4/4 (24 MIDI clocks per beat, 8 32nds per quarter)
-        tempoTrack.push_back(0x00);
-        tempoTrack.push_back(0xFF); tempoTrack.push_back(0x58); tempoTrack.push_back(0x04);
-        tempoTrack.push_back(0x04); tempoTrack.push_back(0x02);
-        tempoTrack.push_back(0x18); tempoTrack.push_back(0x08);
-        // Tempo
-        tempoTrack.push_back(0x00);
-        tempoTrack.push_back(0xFF); tempoTrack.push_back(0x51); tempoTrack.push_back(0x03);
-        tempoTrack.push_back((usPerBeat >> 16) & 0xFF);
-        tempoTrack.push_back((usPerBeat >>  8) & 0xFF);
-        tempoTrack.push_back( usPerBeat        & 0xFF);
-        pushTrackName(tempoTrack, "Midnight Melody Maker");
-        // End of track
-        tempoTrack.push_back(0x00); tempoTrack.push_back(0xFF);
-        tempoTrack.push_back(0x2F); tempoTrack.push_back(0x00);
-
-        // One MTrk per non-empty style.
-        // GM program suggestions per style (helps the host pick a sound).
-        // 0=MÃ©lodie 1=Harpe 2=Basse 3=Percu 4=Marimba 5=Piano
-        static const uint8_t kProgram[kStyles] = {
-            0,   // 1 Acoustic Grand Piano (MÃ©lodie placeholder)
-            46,  // 47 Orchestral Harp
-            33,  // 34 Electric Bass (finger)
-            0,   // unused on ch 9
-            12,  // 13 Marimba
-            0,   // 1 Acoustic Grand Piano
-        };
-        static const char* kTrackName[kStyles] = {
-            "Melodie", "Harpe", "Basse", "Percussions", "Marimba", "Piano"
-        };
-
-        std::vector<std::vector<uint8_t>> styleTracks;
-        for (int s = 0; s < kStyles; ++s) {
-            auto& evs = perStyle[s];
-            if (evs.empty()) continue;
-            std::sort(evs.begin(), evs.end(), [](const Ev& a, const Ev& b) {
-                if (a.tick != b.tick) return a.tick < b.tick;
-                return !a.isOn; // note-offs before note-ons at same tick
-            });
-
-            std::vector<uint8_t> trk;
-            pushTrackName(trk, kTrackName[s]);
-            // Channel: percussions on MIDI ch 10 (0x09), others on ch 1..4.
-            uint8_t chan = (s == 3) ? 9 : (uint8_t)std::min(8, s);
-            // Program change at delta 0 (skip for drums on ch 10).
-            if (s != 3) {
-                trk.push_back(0x00);
-                trk.push_back(0xC0 | chan);
-                trk.push_back(kProgram[s]);
-            }
-            uint32_t prev = 0;
-            for (auto& ev : evs) {
-                midiVarLen(trk, ev.tick - prev);
-                prev = ev.tick;
-                if (ev.isOn) {
-                    trk.push_back(0x90 | chan);
-                    trk.push_back(ev.pitch);
-                    trk.push_back(ev.vel);
-                } else {
-                    trk.push_back(0x80 | chan);
-                    trk.push_back(ev.pitch);
-                    trk.push_back(0x00);
-                }
-            }
-            // End of track
-            trk.push_back(0x00); trk.push_back(0xFF);
-            trk.push_back(0x2F); trk.push_back(0x00);
-            styleTracks.push_back(std::move(trk));
-        }
-
-        // Build MIDI file (Format 1 = synchronous multi-track)
-        uint16_t numTracks = (uint16_t)(1 + styleTracks.size());
-        std::vector<uint8_t> midi;
-        for (char c : {'M','T','h','d'}) midi.push_back((uint8_t)c);
-        midiBE32(midi, 6);
-        midiBE16(midi, 1);          // format 1
-        midiBE16(midi, numTracks);
-        midiBE16(midi, TPQN);
-        pushTrackChunk(midi, tempoTrack);
-        for (auto& t : styleTracks) pushTrackChunk(midi, t);
-
-        // Open Save File dialog so the user can choose name and location
-        wchar_t desktop[MAX_PATH]{};
-        SHGetFolderPathW(nullptr, CSIDL_DESKTOPDIRECTORY, nullptr,
-                         SHGFP_TYPE_CURRENT, desktop);
-
-        wchar_t filePath[MAX_PATH] = L"MelodyMaker.mid";
-        OPENFILENAMEW ofn{};
-        ofn.lStructSize     = sizeof(ofn);
-        ofn.hwndOwner       = hWnd;
-        ofn.lpstrFilter     = L"Fichiers MIDI (*.mid)\0*.mid\0Tous les fichiers (*.*)\0*.*\0";
-        ofn.lpstrFile       = filePath;
-        ofn.nMaxFile        = MAX_PATH;
-        ofn.lpstrInitialDir = desktop;
-        ofn.lpstrTitle      = L"Sauvegarder le MIDI";
-        ofn.lpstrDefExt     = L"mid";
-        ofn.Flags           = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST;
-
-        if (!GetSaveFileNameW(&ofn)) return; // user cancelled
-
-        HANDLE hf = CreateFileW(filePath, GENERIC_WRITE, 0, nullptr,
-                                CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-        if (hf == INVALID_HANDLE_VALUE) {
-            MessageBoxW(hWnd, L"Impossible de cr\u00e9er le fichier.",
-                        L"Export MIDI", MB_OK | MB_ICONERROR);
-            return;
-        }
-        DWORD written = 0;
-        WriteFile(hf, midi.data(), (DWORD)midi.size(), &written, nullptr);
-        CloseHandle(hf);
-
-        wchar_t msg[MAX_PATH + 384];
-        swprintf_s(msg,
-            L"Fichier MIDI sauvegard\u00e9 (%d notes, %d pistes, %.0f BPM) :\n%s\n\n"
-            L"Format 1 multi-piste : une piste MIDI par instrument activ\u00e9.\n"
-            L"Importez dans votre DAW pour retrouver les voix s\u00e9par\u00e9es.",
-            (int)notes.size(), (int)styleTracks.size(),
-            (double)bpm, filePath);
-        MessageBoxW(hWnd, msg, L"Export MIDI \u2014 Multi-piste", MB_OK | MB_ICONINFORMATION);
-    }
-
-    // Render the recorded session through TSF + the loaded SoundFont and
-    // save the result as a stereo 16-bit WAV. This produces the exact sound
-    // currently coming out of the plugin (same SF presets / volumes).
-    void doExportWav() {
-        // Snapshot the recorded notes
-        std::vector<MelodyMakerVST3::RecordedNote> notes;
-        {
-            std::lock_guard<std::mutex> lk(plugin->recMtx);
-            notes = plugin->recNotes;
-        }
-        if (notes.empty()) {
-            MessageBoxW(hWnd,
-                L"Aucune note enregistr\u00e9e.\n\n"
-                L"Lance Play dans ton DAW, laisse g\u00e9n\u00e9rer quelques mesures,\n"
-                L"stop, puis r\u00e9-essaie l'export.",
-                L"Export WAV", MB_OK | MB_ICONINFORMATION);
-            return;
-        }
-
-        float bpm = plugin->lastBpm.load(std::memory_order_relaxed);
-        if (bpm < 1.f) bpm = 120.f;
-        const int    SR     = 48000;
-        const double secsPerBeat = 60.0 / (double)bpm;
-
-        // Total length in samples (longest note end + 2 s tail for releases).
-        double endBeats = 0.0;
-        for (const auto& n : notes) {
-            if (n.beatOn < 0.0) continue;
-            double e = n.beatOn + n.beatLen;
-            if (e > endBeats) endBeats = e;
-        }
-        const int64_t totalSamples =
-            (int64_t)std::ceil((endBeats * secsPerBeat + 2.0) * SR);
-        if (totalSamples <= 0) return;
-
-        // Ask the user where to save before doing the heavy work.
-        wchar_t desktop[MAX_PATH]{};
-        SHGetFolderPathW(nullptr, CSIDL_DESKTOPDIRECTORY, nullptr,
-                         SHGFP_TYPE_CURRENT, desktop);
-        wchar_t filePath[MAX_PATH] = L"MelodyMaker.wav";
-        OPENFILENAMEW ofn{};
-        ofn.lStructSize     = sizeof(ofn);
-        ofn.hwndOwner       = hWnd;
-        ofn.lpstrFilter     = L"Fichiers WAV (*.wav)\0*.wav\0Tous les fichiers (*.*)\0*.*\0";
-        ofn.lpstrFile       = filePath;
-        ofn.nMaxFile        = MAX_PATH;
-        ofn.lpstrInitialDir = desktop;
-        ofn.lpstrTitle      = L"Sauvegarder le rendu audio (WAV)";
-        ofn.lpstrDefExt     = L"wav";
-        ofn.Flags           = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST;
-        if (!GetSaveFileNameW(&ofn)) return;
-
-        // Locate the bundled SF2 (same logic as MelodyMakerVST3::loadSoundFont).
-        wchar_t modPath[MAX_PATH] = {};
-        if (!GetModuleFileNameW(g_hInst, modPath, MAX_PATH)) {
-            MessageBoxW(hWnd, L"Module introuvable.", L"Export WAV",
-                        MB_OK | MB_ICONERROR);
-            return;
-        }
-        for (int i = (int)wcslen(modPath) - 1; i >= 0; --i) {
-            if (modPath[i] == L'\\' || modPath[i] == L'/') { modPath[i] = 0; break; }
-        }
-        std::wstring sfPath = std::wstring(modPath) + L"\\..\\Resources\\GeneralUser.sf2";
-        char sfPath8[MAX_PATH * 4] = {};
-        WideCharToMultiByte(CP_ACP, 0, sfPath.c_str(), -1,
-                            sfPath8, sizeof(sfPath8), nullptr, nullptr);
-
-        // Spin up a private TSF instance so we don't disturb live playback.
-        tsf* offline = tsf_load_filename(sfPath8);
-        if (!offline) {
-            MessageBoxW(hWnd, L"Chargement de la SoundFont impossible.",
-                        L"Export WAV", MB_OK | MB_ICONERROR);
-            return;
-        }
-        tsf_set_output(offline, TSF_STEREO_INTERLEAVED, SR, -3.0f);
-        tsf_set_max_voices(offline, 64);
-        for (int s = 0; s < MelodyMakerVST3::kStyleCount; ++s) {
-            int ch  = MelodyMakerVST3::kSfChannelOf(s);
-            int idx = std::clamp(plugin->sfPresetIdxPerStyle[s],
-                                 0, kSfPresetCount[s] - 1);
-            const SfPreset& p = kSfPresetsByStyle[s][idx];
-            tsf_channel_set_presetnumber(offline, ch, p.program,
-                                         p.bank == 128 ? 1 : 0);
-            tsf_channel_set_volume(offline, ch, plugin->sfVolumePerStyle[s]);
-        }
-
-        // Build a sorted event list (note-off before note-on at same sample).
-        struct Ev { int64_t samp; bool isOn; uint8_t pitch; uint8_t vel; uint8_t chan; };
-        std::vector<Ev> evs;
-        evs.reserve(notes.size() * 2);
-        for (const auto& n : notes) {
-            if (n.beatOn < 0.0) continue;
-            int s = std::clamp((int)n.style, 0,
-                               MelodyMakerVST3::kStyleCount - 1);
-            uint8_t ch  = (uint8_t)MelodyMakerVST3::kSfChannelOf(s);
-            uint8_t p   = (uint8_t)std::clamp((int)n.pitch, 0, 127);
-            uint8_t v   = (uint8_t)std::clamp((int)std::round(n.vel * 127.f),
-                                              1, 127);
-            int64_t on  = (int64_t)std::round(n.beatOn * secsPerBeat * SR);
-            int64_t off = (int64_t)std::round(
-                (n.beatOn + n.beatLen) * secsPerBeat * SR);
-            if (off <= on) off = on + 1;
-            evs.push_back({on,  true,  p, v, ch});
-            evs.push_back({off, false, p, 0, ch});
-        }
-        std::sort(evs.begin(), evs.end(), [](const Ev& a, const Ev& b) {
-            if (a.samp != b.samp) return a.samp < b.samp;
-            return !a.isOn; // offs first
-        });
-
-        // Render in chunks, writing interleaved stereo float into a buffer.
-        std::vector<float> pcm((size_t)totalSamples * 2, 0.0f);
-        size_t outPos = 0;
-        size_t evIdx  = 0;
-        const size_t kChunk = 1024;
-        while (outPos < (size_t)totalSamples) {
-            // Fire all events whose sample <= outPos.
-            while (evIdx < evs.size() && evs[evIdx].samp <= (int64_t)outPos) {
-                const Ev& e = evs[evIdx++];
-                if (e.isOn)
-                    tsf_channel_note_on (offline, e.chan, e.pitch, e.vel / 127.f);
-                else
-                    tsf_channel_note_off(offline, e.chan, e.pitch);
-            }
-            // Render up to the next event (or chunk size).
-            size_t nextEvSamp = (evIdx < evs.size())
-                ? (size_t)evs[evIdx].samp : (size_t)totalSamples;
-            size_t want = std::min<size_t>(kChunk,
-                std::min<size_t>(nextEvSamp - outPos,
-                                 (size_t)totalSamples - outPos));
-            if (want == 0) want = 1;
-            tsf_render_float(offline, pcm.data() + outPos * 2,
-                             (int)want, 0);
-            outPos += want;
-        }
-        tsf_close(offline);
-
-        // Find peak for normalisation hint (do NOT actually normalise â€” keep
-        // the same level the user hears live).
-        float peak = 0.f;
-        for (float v : pcm) { float a = std::fabs(v); if (a > peak) peak = a; }
-        // Soft clip prevention.
-        float gain = 1.0f;
-        if (peak > 0.98f) gain = 0.98f / peak;
-
-        // Convert to 16-bit PCM little-endian.
-        std::vector<int16_t> pcm16(pcm.size());
-        for (size_t i = 0; i < pcm.size(); ++i) {
-            float v = std::clamp(pcm[i] * gain, -1.0f, 1.0f);
-            pcm16[i] = (int16_t)std::lrint(v * 32767.0f);
-        }
-
-        // Build minimal WAV (PCM16 stereo).
-        const uint16_t channels   = 2;
-        const uint32_t byteRate   = (uint32_t)SR * channels * 2;
-        const uint16_t blockAlign = channels * 2;
-        const uint32_t dataBytes  = (uint32_t)(pcm16.size() * sizeof(int16_t));
-        std::vector<uint8_t> wav;
-        auto put32 = [&](uint32_t v) {
-            wav.push_back((uint8_t)(v & 0xFF));
-            wav.push_back((uint8_t)((v >>  8) & 0xFF));
-            wav.push_back((uint8_t)((v >> 16) & 0xFF));
-            wav.push_back((uint8_t)((v >> 24) & 0xFF));
-        };
-        auto put16 = [&](uint16_t v) {
-            wav.push_back((uint8_t)(v & 0xFF));
-            wav.push_back((uint8_t)((v >> 8) & 0xFF));
-        };
-        for (char c : {'R','I','F','F'}) wav.push_back((uint8_t)c);
-        put32(36u + dataBytes);
-        for (char c : {'W','A','V','E'}) wav.push_back((uint8_t)c);
-        for (char c : {'f','m','t',' '}) wav.push_back((uint8_t)c);
-        put32(16);                  // fmt size
-        put16(1);                   // PCM
-        put16(channels);
-        put32((uint32_t)SR);
-        put32(byteRate);
-        put16(blockAlign);
-        put16(16);                  // bits per sample
-        for (char c : {'d','a','t','a'}) wav.push_back((uint8_t)c);
-        put32(dataBytes);
-        size_t hdr = wav.size();
-        wav.resize(hdr + dataBytes);
-        std::memcpy(wav.data() + hdr, pcm16.data(), dataBytes);
-
-        HANDLE hf = CreateFileW(filePath, GENERIC_WRITE, 0, nullptr,
-                                CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-        if (hf == INVALID_HANDLE_VALUE) {
-            MessageBoxW(hWnd, L"Impossible de cr\u00e9er le fichier.",
-                        L"Export WAV", MB_OK | MB_ICONERROR);
-            return;
-        }
-        DWORD written = 0;
-        WriteFile(hf, wav.data(), (DWORD)wav.size(), &written, nullptr);
-        CloseHandle(hf);
-
-        double durSec = (double)totalSamples / (double)SR;
-        wchar_t msg[MAX_PATH + 384];
-        swprintf_s(msg,
-            L"Audio rendu sauvegard\u00e9 (%d notes, %.1f s, %.0f BPM, %d Hz stereo) :\n%s\n\n"
-            L"Le fichier WAV contient le son exact qui sort du plugin\n"
-            L"avec les SoundFonts et volumes actuels.",
-            (int)notes.size(), durSec, (double)bpm, SR, filePath);
-        MessageBoxW(hWnd, msg, L"Export WAV \u2014 Rendu audio",
-                    MB_OK | MB_ICONINFORMATION);
-    }
-
-    // Tiny in-memory IBStream (vector-backed) for preset save/load.
-    // Used only on the GUI thread, no real refcounting needed.
-    class MemBufStream : public IBStream {
-    public:
-        std::vector<uint8_t> buf;
-        int64                 pos = 0;
-        explicit MemBufStream(std::vector<uint8_t> initial = {})
-            : buf(std::move(initial)) {}
-        tresult PLUGIN_API read (void* dst, int32 n, int32* nRead) override {
-            int64 avail = (int64)buf.size() - pos;
-            int32 toRead = (int32)std::min<int64>(avail, n);
-            if (toRead > 0) std::memcpy(dst, buf.data() + pos, (size_t)toRead);
-            pos += toRead;
-            if (nRead) *nRead = toRead;
-            return kResultOk;
-        }
-        tresult PLUGIN_API write (void* src, int32 n, int32* nWritten) override {
-            if (n < 0) { if (nWritten) *nWritten = 0; return kResultOk; }
-            if ((size_t)(pos + n) > buf.size()) buf.resize((size_t)(pos + n));
-            std::memcpy(buf.data() + pos, src, (size_t)n);
-            pos += n;
-            if (nWritten) *nWritten = n;
-            return kResultOk;
-        }
-        tresult PLUGIN_API seek (int64 p, int32 mode, int64* result) override {
-            int64 np = pos;
-            if (mode == kIBSeekSet)      np = p;
-            else if (mode == kIBSeekCur) np = pos + p;
-            else if (mode == kIBSeekEnd) np = (int64)buf.size() + p;
-            if (np < 0) np = 0;
-            pos = np;
-            if (result) *result = pos;
-            return kResultOk;
-        }
-        tresult PLUGIN_API tell (int64* p) override {
-            if (p) *p = pos; return kResultOk;
-        }
-        // FUnknown stubs (no real refcount; lifetime is the local var).
-        tresult PLUGIN_API queryInterface(const TUID, void** obj) override {
-            if (obj) *obj = nullptr; return kNoInterface;
-        }
-        uint32  PLUGIN_API addRef ()  override { return 1; }
-        uint32  PLUGIN_API release () override { return 1; }
-    };
-
-    void doSavePreset() {
-        // Capture current plugin state into an in-memory stream.
-        MemBufStream mem;
-        if (plugin->getState(&mem) != kResultOk) {
-            MessageBoxW(hWnd, L"\u00c9chec de la r\u00e9cup\u00e9ration de l'\u00e9tat.",
-                        L"Sauvegarder le preset", MB_OK | MB_ICONERROR);
-            return;
-        }
-
-        wchar_t desktop[MAX_PATH]{};
-        SHGetFolderPathW(nullptr, CSIDL_DESKTOPDIRECTORY, nullptr,
-                         SHGFP_TYPE_CURRENT, desktop);
-        wchar_t filePath[MAX_PATH] = L"MelodyMaker.mmp";
-        OPENFILENAMEW ofn{};
-        ofn.lStructSize     = sizeof(ofn);
-        ofn.hwndOwner       = hWnd;
-        ofn.lpstrFilter     = L"Preset Melody Maker (*.mmp)\0*.mmp\0Tous (*.*)\0*.*\0";
-        ofn.lpstrFile       = filePath;
-        ofn.nMaxFile        = MAX_PATH;
-        ofn.lpstrInitialDir = desktop;
-        ofn.lpstrTitle      = L"Sauvegarder un preset";
-        ofn.lpstrDefExt     = L"mmp";
-        ofn.Flags           = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST;
-        if (!GetSaveFileNameW(&ofn)) return;
-
-        // File format: 4-byte magic 'MMPR' + 4-byte version (1) + raw state bytes.
-        const uint8_t magic[4] = { 'M','M','P','R' };
-        const uint32_t ver = 1u;
-
-        HANDLE hf = CreateFileW(filePath, GENERIC_WRITE, 0, nullptr,
-                                CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-        if (hf == INVALID_HANDLE_VALUE) {
-            MessageBoxW(hWnd, L"Impossible de cr\u00e9er le fichier.",
-                        L"Sauvegarder le preset", MB_OK | MB_ICONERROR);
-            return;
-        }
-        DWORD wr = 0;
-        WriteFile(hf, magic, 4, &wr, nullptr);
-        WriteFile(hf, &ver,  4, &wr, nullptr);
-        if (!mem.buf.empty())
-            WriteFile(hf, mem.buf.data(), (DWORD)mem.buf.size(), &wr, nullptr);
-        CloseHandle(hf);
-
-        // Auto-save MIDI alongside the preset if notes have been recorded.
-        bool midiSaved = false;
-        wchar_t midPath[MAX_PATH];
-        {
-            std::vector<MelodyMakerVST3::RecordedNote> notes;
-            { std::lock_guard<std::mutex> lk(plugin->recMtx); notes = plugin->recNotes; }
-            if (!notes.empty()) {
-                std::vector<uint8_t> midiBytes = buildMidiBytes(notes);
-                if (!midiBytes.empty()) {
-                    wcscpy_s(midPath, filePath);
-                    wchar_t* dot = wcsrchr(midPath, L'.');
-                    if (dot) *dot = L'\0';
-                    wcscat_s(midPath, L".mid");
-                    HANDLE hm = CreateFileW(midPath, GENERIC_WRITE, 0, nullptr,
-                        CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-                    if (hm != INVALID_HANDLE_VALUE) {
-                        DWORD mw = 0;
-                        WriteFile(hm, midiBytes.data(), (DWORD)midiBytes.size(), &mw, nullptr);
-                        CloseHandle(hm);
-                        midiSaved = true;
-                    }
-                }
-            }
-        }
-
-        wchar_t msg[MAX_PATH + 400];
-        if (midiSaved)
-            swprintf_s(msg, L"Preset + MIDI sauvegard\u00e9s :\n  %s\n  %s", filePath, midPath);
-        else
-            swprintf_s(msg, L"Preset sauvegard\u00e9 (%zu octets) :\n%s",
-                       mem.buf.size() + 8, filePath);
-        MessageBoxW(hWnd, msg, L"Sauvegarder le preset", MB_OK | MB_ICONINFORMATION);
-    }
-
-    void doLoadPreset() {
-        wchar_t desktop[MAX_PATH]{};
-        SHGetFolderPathW(nullptr, CSIDL_DESKTOPDIRECTORY, nullptr,
-                         SHGFP_TYPE_CURRENT, desktop);
-        wchar_t filePath[MAX_PATH] = L"";
-        OPENFILENAMEW ofn{};
-        ofn.lStructSize     = sizeof(ofn);
-        ofn.hwndOwner       = hWnd;
-        ofn.lpstrFilter     = L"Preset Melody Maker (*.mmp)\0*.mmp\0Tous (*.*)\0*.*\0";
-        ofn.lpstrFile       = filePath;
-        ofn.nMaxFile        = MAX_PATH;
-        ofn.lpstrInitialDir = desktop;
-        ofn.lpstrTitle      = L"Charger un preset";
-        ofn.lpstrDefExt     = L"mmp";
-        ofn.Flags           = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
-        if (!GetOpenFileNameW(&ofn)) return;
-
-        HANDLE hf = CreateFileW(filePath, GENERIC_READ, FILE_SHARE_READ, nullptr,
-                                OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-        if (hf == INVALID_HANDLE_VALUE) {
-            MessageBoxW(hWnd, L"Impossible d'ouvrir le fichier.",
-                        L"Charger le preset", MB_OK | MB_ICONERROR);
-            return;
-        }
-        LARGE_INTEGER sz{};
-        if (!GetFileSizeEx(hf, &sz) || sz.QuadPart < 8 || sz.QuadPart > (1<<24)) {
-            CloseHandle(hf);
-            MessageBoxW(hWnd, L"Fichier de preset invalide.",
-                        L"Charger le preset", MB_OK | MB_ICONERROR);
-            return;
-        }
-        std::vector<uint8_t> file((size_t)sz.QuadPart);
-        DWORD rd = 0;
-        ReadFile(hf, file.data(), (DWORD)file.size(), &rd, nullptr);
-        CloseHandle(hf);
-        if (rd != file.size() ||
-            file[0] != 'M' || file[1] != 'M' ||
-            file[2] != 'P' || file[3] != 'R') {
-            MessageBoxW(hWnd, L"Ce n'est pas un preset Melody Maker.",
-                        L"Charger le preset", MB_OK | MB_ICONERROR);
-            return;
-        }
-        // file[4..7] = version (currently 1; ignored beyond presence).
-        std::vector<uint8_t> body(file.begin() + 8, file.end());
-        MemBufStream mem(std::move(body));
-        if (plugin->setState(&mem) != kResultOk) {
-            MessageBoxW(hWnd, L"\u00c9tat illisible.",
-                        L"Charger le preset", MB_OK | MB_ICONERROR);
-            return;
-        }
-        // Refresh the entire UI from the freshly loaded state.
-        int s = plugin->getStyleType();
-        applyVisibilityForStyle(s);
-        refreshAll();
-        populateInstrumentCombo(s);
-        if (hVolSlider)
-            SendMessageW(hVolSlider, TBM_SETPOS, TRUE,
-                (LPARAM)(int)std::round(plugin->sfVolumePerStyle[s] * 100.0f));
-        refreshVolValue();
-        // Refresh new parameters not handled by applyVisibilityForStyle.
-        if (hHumanizeKnob)
-            if (auto* kw = reinterpret_cast<KnobWidget*>(GetWindowLongPtrW(hHumanizeKnob, GWLP_USERDATA)))
-                kw->setPos((int)std::round(plugin->humanizePerStyle[s] * 1000.0f));
-        refreshHumanizeValue();
-        if (hRetardKnob)
-            if (auto* kw = reinterpret_cast<KnobWidget*>(GetWindowLongPtrW(hRetardKnob, GWLP_USERDATA)))
-                kw->setPos((int)std::round(plugin->retardPerStyle[s] * 1000.0f));
-        refreshRetardValue();
-        if (hSectionCombo)
-            SendMessageW(hSectionCombo, CB_SETCURSEL,
-                std::clamp(plugin->currentSection.load(std::memory_order_relaxed), 0, 4), 0);
-        if (hStartBarCombo) {
-            static constexpr int kSBV[] = { 0,1,2,4,8 };
-            int sbv = plugin->startBarPerStyle[s];
-            int sbi = 0; for (int k=0;k<5;k++) if (kSBV[k]==sbv) sbi=k;
-            SendMessageW(hStartBarCombo, CB_SETCURSEL, sbi, 0);
-        }
-        if (hProgCombo) SendMessageW(hProgCombo, CB_SETCURSEL,
-                                     plugin->getProgType(), 0);
-        InvalidateRect(hWnd, nullptr, TRUE);
-
-        MessageBoxW(hWnd, L"Preset charg\u00e9 avec succ\u00e8s.",
-                    L"Charger le preset", MB_OK | MB_ICONINFORMATION);
-    }
-
-    void sendParam(int i, double actual) {
-        // Update local plugin state immediately so process() picks it up
-        // even before the host echoes the change back.
-        plugin->paramValues[i] = actual;
-        // Mirror to active tab, then broadcast to other locked tabs only.
-        int activeStyle = plugin->getStyleType();
-        plugin->paramValuesPerStyle[activeStyle][i] = actual;
-        if (i == mm::kParamSubdiv || i == mm::kParamMode)
-            plugin->broadcastParamLocked(i, activeStyle);
-        double norm = MelodyMakerVST3::actualToNorm(i, actual);
-        plugin->beginEdit(i);
-        plugin->performEdit(i, norm);
-        plugin->endEdit(i);
-        plugin->setParamNormalized(i, norm);
-        updateValueLabel(i, actual);
-    }
-
-    void onComboChange(int paramId) {
-        int idx = (int)SendMessageW(hCtrl[paramId], CB_GETCURSEL, 0, 0);
-        if (idx == CB_ERR) return;
-        sendParam(paramId, valueFromComboIndex(paramId, idx));
-        // Refresh compat dots: when Mode changes, repaint Prog combo (and vice versa).
-        if (paramId == mm::kParamMode && hProgCombo) {
-            InvalidateRect(hProgCombo, nullptr, FALSE);
-            UpdateWindow(hProgCombo);
-        }
-    }
-
-    void onTrackbarChange(int paramId) {
-        HWND ctrl = hCtrl[paramId];
-        int pos = 0;
-        // Knob widget? Read its stored pos directly.
-        wchar_t cls[64] = {};
-        GetClassNameW(ctrl, cls, 64);
-        if (wcscmp(cls, KnobWidget::kClassName) == 0) {
-            auto* kw = reinterpret_cast<KnobWidget*>(GetWindowLongPtrW(ctrl, GWLP_USERDATA));
-            pos = kw ? kw->getPos() : 0;
-        } else {
-            pos = (int)SendMessageW(ctrl, TBM_GETPOS, 0, 0);
-        }
-        const auto& d = mm::kParamDefs[paramId];
-        double v = d.min_value + (pos / 1000.0) * (d.max_value - d.min_value);
-        sendParam(paramId, v);
-    }
-};
-
 IMPLEMENT_FUNKNOWN_METHODS(MelodyMakerView, IPlugView, IPlugView::iid)
+
+
+// ----------------------------------------------------------------------------
+// IAudioProcessor::process — core callback, called every audio block
+// ----------------------------------------------------------------------------
+tresult PLUGIN_API MelodyMakerVST3::process(ProcessData& data)
+{
+    // -- Apply parameter automation changes --
+    if (data.inputParameterChanges) {
+        int32 numQ = data.inputParameterChanges->getParameterCount();
+        for (int32 q = 0; q < numQ; ++q) {
+            IParamValueQueue* queue = data.inputParameterChanges->getParameterData(q);
+            if (!queue) continue;
+            ParamID pid = queue->getParameterId();
+            // Section parameter — update currentSection from automation/host restore.
+            if (pid == kParamSection) {
+                int32 nPts = queue->getPointCount();
+                if (nPts > 0) {
+                    int32 off; ParamValue nv;
+                    queue->getPoint(nPts - 1, off, nv);
+                    int sec = std::clamp((int)std::round(nv * 4.0), 0, (int)kSecCount - 1);
+                    currentSection.store(sec, std::memory_order_relaxed);
+                }
+                continue;
+            }
+            if (pid >= mm::kParamCount) continue;
+            int32 nPoints = queue->getPointCount();
+            if (nPoints > 0) {
+                int32 offset; ParamValue norm;
+                queue->getPoint(nPoints - 1, offset, norm);
+                // norm âˆˆ [0, 1]  â†’  actual param range
+                const mm::ParamDef& d = mm::kParamDefs[pid];
+                paramValues[pid] = d.min_value + norm * (d.max_value - d.min_value);
+                // Mirror into the active style's slot only.
+                // NOTE: we do NOT broadcastParamLocked here because
+                // inputParameterChanges can be a roundtrip from our own
+                // setParamNormalized() call (triggered during tab switch).
+                // Broadcasting here would overwrite all locked tabs with
+                // the newly-loaded style's values, which is the bug.
+                // Locking / broadcasting is already done in sendParam()
+                // (the GUI code path) at the moment the user edits a knob.
+                int activeStyle = getStyleType();
+                paramValuesPerStyle[activeStyle][pid] = paramValues[pid];
+            }
+        }
+    }
+
+    // -- Drain GUI note-preview queue (piano key taps from piano roll UI) --
+    {
+        IEventList* outEv = data.outputEvents;
+        uint32_t r = guiNoteRead.load(std::memory_order_relaxed);
+        uint32_t w = guiNoteWrite.load(std::memory_order_acquire);
+        int guiStyle = getStyleType();
+        int16 guiChan = (int16)guiStyle;
+        while (r != w) {
+            GuiNote gn = guiNoteRing[r % kGuiQueueSize];
+            r++;
+            if (gn.noteOff) {
+                // Note-off: stop all voices on this pitch
+                for (auto& v : voicePool) {
+                    if (v.pitch == gn.pitch && !v.noteOff) {
+                        v.noteOff  = true;
+                        v.offSample = 0;
+                    }
+                }
+                if (outEv) {
+                    Event off{}; off.type = Event::kNoteOffEvent;
+                    off.sampleOffset = 0; off.noteOff.channel = guiChan;
+                    off.noteOff.pitch = gn.pitch; off.noteOff.noteId = -1;
+                    outEv->addEvent(off);
+                }
+            } else {
+                int32 nid = nextNoteId++;
+                triggerVoice(gn.pitch, gn.vel, -1, false, nid, gn.style);
+                if (outEv) {
+                    Event on{}; on.type = Event::kNoteOnEvent;
+                    on.sampleOffset = 0; on.noteOn.channel = guiChan;
+                    on.noteOn.pitch = gn.pitch;
+                    on.noteOn.velocity = std::clamp(gn.vel * sfVolumePerStyle[gn.style], 0.05f, 1.0f);
+                    on.noteOn.noteId = nid;
+                    outEv->addEvent(on);
+                }
+            }
+        }
+        guiNoteRead.store(r, std::memory_order_release);
+    }
+    // -- Handle incoming MIDI (piano roll trigger notes) --
+    // A note placed in the piano roll = trigger: its pitch defines the
+    // root key of the generated melody, and its duration = melody length.
+    if (data.inputEvents) {
+        int32 numEvIn = data.inputEvents->getEventCount();
+        for (int32 e = 0; e < numEvIn; ++e) {
+            Event ev{};
+            if (data.inputEvents->getEvent(e, ev) == kResultOk) {
+                // bus 0 = main trigger input ; bus 1 = "Context In"
+                // (listen-only, used for auto key/mode detection).
+                int busIdx = ev.busIndex;
+                double evBeat = (data.processContext &&
+                                 (data.processContext->state &
+                                  ProcessContext::kProjectTimeMusicValid))
+                    ? data.processContext->projectTimeMusic
+                    : 0.0;
+                if (ev.type == Event::kNoteOnEvent && ev.noteOn.velocity > 0.0f) {
+                    ctxNoteOn(busIdx, ev.noteOn.pitch,
+                              ev.noteOn.velocity, evBeat);
+                    if (busIdx == 0) {
+                        // Add to trigger stack if not already present and not full
+                        bool already = false;
+                        for (int ti = 0; ti < triggerCount; ++ti)
+                            if (triggerStack[ti].pitch == ev.noteOn.pitch) { already = true; break; }
+                        if (!already && triggerCount < kMaxTriggers) {
+                            // Do NOT reset lastSlot here. When notes are placed
+                            // consecutively in the piano roll (C5→E5→C#5…), the
+                            // slot grid must continue seamlessly from where the
+                            // previous note left off. Resetting to -1 would restart
+                            // the rhythmic phase mid-bar, causing the "off-the-measure"
+                            // artefact. Legitimate resets (loop restart, transport stop,
+                            // backward seek) are handled further below.
+                            triggerStack[triggerCount++] = { ev.noteOn.pitch, ev.noteOn.noteId, evBeat };
+                        }
+                    }
+                } else if (ev.type == Event::kNoteOffEvent) {
+                    ctxNoteOff(busIdx, ev.noteOff.pitch, evBeat);
+                    if (busIdx == 0) {
+                        // Remove matching pitch; long-note triggers section change.
+                        for (int ti = 0; ti < triggerCount; ++ti) {
+                            if (triggerStack[ti].pitch == ev.noteOff.pitch) {
+                                double holdBeats = evBeat - triggerStack[ti].beatTimeOn;
+                                if (holdBeats >= 1.5 && triggerCount == 1) {
+                                    int p = ev.noteOff.pitch % 12;
+                                    int sec = (p <= 1) ? kSecIntro
+                                            : (p <= 3) ? kSecVerse
+                                            : (p <= 5) ? kSecChorus
+                                            : (p <= 7) ? kSecBridge
+                                            :             kSecOutro;
+                                    currentSection.store(sec, std::memory_order_relaxed);
+                                    if (sec == kSecIntro && !introFadeDone)  sectionVolumeRamp = 0.0f;
+                                    if (sec == kSecOutro)  sectionVolumeRamp = 1.0f;
+                                }
+                                triggerStack[ti] = triggerStack[--triggerCount];
+                                break;
+                            }
+                        }
+                        // Release voices when last trigger key is up.
+                        // Use sfNoteOff per active note (graceful release
+                        // envelope) rather than killing the synth state,
+                        // which would create an audible click/dropout.
+                        if (triggerCount == 0) {
+                            for (auto& v : voicePool) v.noteOff = true;
+                            for (const auto& n : activeNotes)
+                                sfNoteOff(n.noteId, n.key);
+                            activeNotes.clear();
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // -- Clear audio output (voices will be mixed in at end of process) --
+    if (data.outputs) {
+        for (int32 bi = 0; bi < data.numOutputs; ++bi) {
+            AudioBusBuffers& bus = data.outputs[bi];
+            bus.silenceFlags = 0;
+            for (int32 ch = 0; ch < bus.numChannels; ++ch)
+                if (bus.channelBuffers32 && bus.channelBuffers32[ch])
+                    std::memset(bus.channelBuffers32[ch], 0,
+                                sizeof(float) * static_cast<size_t>(data.numSamples));
+        }
+    }
+
+    // -- Read transport --
+    bool   rolling = false;
+    double beatPos = 0.0;
+    double bpm     = 120.0;
+    if (data.processContext) {
+        const ProcessContext& ctx = *data.processContext;
+        if (ctx.state & ProcessContext::kTempoValid)
+            bpm = ctx.tempo;
+        if (ctx.state & ProcessContext::kPlaying)
+            rolling = true;
+        if (ctx.state & ProcessContext::kProjectTimeMusicValid)
+            beatPos = ctx.projectTimeMusic;
+    }
+
+    lastBpm.store((float)bpm, std::memory_order_relaxed);
+    if (rolling) lastBeatPos.store(beatPos, std::memory_order_relaxed);
+
+    // Detect loop restart or backward seek: reset note-trigger state.
+    if (rolling && prevBeatPos >= 0.0 && beatPos < prevBeatPos - 0.25) {
+        lastSlot = -1;
+        // Gracefully release only the notes that were still pending
+        // (so the SoundFont's natural release envelope avoids a click)
+        // rather than nuking the whole synth state.
+        IEventList* loopOutEvents = data.outputEvents;
+        for (const auto& n : activeNotes) {
+            if (loopOutEvents) {
+                Event off{};
+                off.type             = Event::kNoteOffEvent;
+                off.sampleOffset     = 0;
+                off.noteOff.channel  = n.channel;
+                off.noteOff.pitch    = n.key;
+                off.noteOff.noteId   = n.noteId;
+                off.noteOff.velocity = 0.f;
+                loopOutEvents->addEvent(off);
+            }
+            releaseVoice(n.noteId, n.key); // calls sfNoteOff (smooth release)
+        }
+        activeNotes.clear();
+        if (recMtx.try_lock()) {
+            // Keep user-drawn notes; drop auto-generated ones.
+            recNotes = pinnedNotes;
+            audioNotes = pinnedNotes;
+            recMtx.unlock();
+        }
+        recStartBeat = beatPos;
+    }
+    // Detect transport start: begin fresh recording
+    if (rolling && prevBeatPos < 0.0) {
+        if (recMtx.try_lock()) {
+            recNotes = pinnedNotes;
+            audioNotes = pinnedNotes;
+            recMtx.unlock();
+        }
+        recStartBeat = beatPos;
+    }
+    prevBeatPos = rolling ? beatPos : -1.0;
+
+    IEventList* outEvents = data.outputEvents;
+    const uint32 nframes  = static_cast<uint32>(data.numSamples);
+
+    // -- Send MIDI CCs to downstream synth (e.g. Sytrus) on style change --
+    // CCs shape the timbre to match the current style automatically.
+    {
+        int curStyle = getStyleType();
+        if (curStyle != lastSentStyle && outEvents) {
+            // {CC number, value per style[0..4]}
+            // CC73=Attack  CC72=Release  CC74=Brightness  CC71=Resonance  CC91=Reverb
+            struct CcPreset { uint8 cc; int8 vals[5]; };
+            static const CcPreset kPresets[] = {
+                //          Mel  Harp Basse Perc  Mari
+                { 73, { 40,   5,  25,    0,   8 } }, // Attack
+                { 72, { 60,  90, 110,   10,  30 } }, // Release
+                { 74, { 64, 100,  30,  110,  90 } }, // Brightness
+                { 71, { 20,  50,  80,   15,  35 } }, // Resonance
+                { 91, { 30,  60,  15,    5,  20 } }, // Reverb
+            };
+            for (auto& p : kPresets) {
+                Event cc{};
+                cc.type                   = Event::kLegacyMIDICCOutEvent;
+                cc.sampleOffset           = 0;
+                cc.midiCCOut.channel      = 0;
+                cc.midiCCOut.controlNumber = p.cc;
+                cc.midiCCOut.value        = p.vals[curStyle];
+                cc.midiCCOut.value2       = 0;
+                outEvents->addEvent(cc);
+            }
+            lastSentStyle = curStyle;
+        }
+    }
+
+    // -- Flush pending note-offs that fall within this block --
+    for (auto it = activeNotes.begin(); it != activeNotes.end();) {
+        if (it->offSample < static_cast<int64_t>(nframes)) {
+            if (outEvents) {
+                Event off{};
+                off.type          = Event::kNoteOffEvent;
+                off.sampleOffset  = static_cast<int32>(std::max(0LL, it->offSample));
+                off.noteOff.channel  = it->channel;
+                off.noteOff.pitch    = it->key;
+                off.noteOff.noteId   = it->noteId;
+                off.noteOff.velocity = 0.f;
+                outEvents->addEvent(off);
+            }
+            releaseVoice(it->noteId, it->key);
+            it = activeNotes.erase(it);
+        } else {
+            it->offSample -= static_cast<int64_t>(nframes);
+            ++it;
+        }
+    }
+
+    if (!rolling) {
+        triggerCount = 0;
+        // Send note-off events for any MIDI notes still tracked as active.
+        if (outEvents && !activeNotes.empty()) {
+            for (auto& n : activeNotes) {
+                Event off{};
+                off.type             = Event::kNoteOffEvent;
+                off.sampleOffset     = 0;
+                off.noteOff.channel  = n.channel;
+                off.noteOff.pitch    = n.key;
+                off.noteOff.noteId   = n.noteId;
+                off.noteOff.velocity = 0.f;
+                outEvents->addEvent(off);
+            }
+            activeNotes.clear();
+        }
+        // Always silence the internal synth (covers TSF release tails even
+        // when activeNotes is already empty, e.g. first pause after a bar).
+        sfAllNotesOff();
+        for (auto& vo : voicePool) { vo.noteOff = true; vo.env = 0.0; vo.offSample = -1; }
+        lastSlot = -1;
+        renderVoices(data.outputs, data.numOutputs, nframes);
+        return kResultOk;
+    }
+
+    // Only generate melody while at least one trigger note is held.
+    // --- Fire user-pinned notes (independent of trigger state) ---
+    {
+        double bps_  = std::max(0.05, bpm / 60.0);
+        double bps   = bps_ / sampleRate; // beatsPerSample
+        double blockEnd = beatPos + static_cast<double>(nframes) * bps;
+        for (auto& pn : audioNotes) {
+            if (!isStyleAudible(pn.style)) continue; // mute / solo gate
+            double absBeat = recStartBeat + pn.beatOn;
+            if (absBeat < beatPos || absBeat >= blockEnd) continue;
+            double offsetBeats  = absBeat - beatPos;
+            int32  so  = static_cast<int32>(std::max(0.0,
+                             std::floor(offsetBeats / bps)));
+            if (so >= static_cast<int32>(nframes)) continue;
+            int16_t pitch = pn.pitch;
+            float   vel   = std::clamp(pn.vel, 0.05f, 1.0f);
+            int32   nid   = nextNoteId++;
+            int16   chan  = static_cast<int16>(pn.style);
+            if (outEvents) {
+                Event on{};
+                on.type            = Event::kNoteOnEvent;
+                on.sampleOffset    = so;
+                on.noteOn.channel  = chan;
+                on.noteOn.pitch    = static_cast<int16>(pitch);
+                on.noteOn.velocity = std::clamp(vel * sfVolumePerStyle[pn.style], 0.05f, 1.0f);
+                on.noteOn.noteId   = nid;
+                outEvents->addEvent(on);
+            }
+            double  noteBeats = std::max(pn.beatLen, 1.0 / 16.0);
+            int64_t offSample = static_cast<int64_t>(so)
+                              + static_cast<int64_t>(std::round(noteBeats / bps));
+            triggerVoice(pitch, vel,
+                offSample < static_cast<int64_t>(nframes) ? offSample : -1,
+                /*isPerc=*/false, nid, pn.style);
+            if (offSample < static_cast<int64_t>(nframes)) {
+                if (outEvents) {
+                    Event off{};
+                    off.type             = Event::kNoteOffEvent;
+                    off.sampleOffset     = static_cast<int32>(offSample);
+                    off.noteOff.channel  = chan;
+                    off.noteOff.pitch    = static_cast<int16>(pitch);
+                    off.noteOff.noteId   = nid;
+                    off.noteOff.velocity = 0.f;
+                    outEvents->addEvent(off);
+                }
+            } else {
+                activeNotes.push_back({
+                    static_cast<int16_t>(pitch), chan, nid,
+                    offSample - static_cast<int64_t>(nframes)
+                });
+            }
+        }
+    }
+
+    if (!hasTrigger()) {
+        renderVoices(data.outputs, data.numOutputs, nframes);
+        return kResultOk;
+    }
+
+    // -- Generate notes on beat subdivisions --
+    double bps           = std::max(0.05, bpm / 60.0);
+    double beatsPerSample = bps / sampleRate;
+    double blockEndBeat  = beatPos + static_cast<double>(nframes) * beatsPerSample;
+
+    // Master grid uses the active tab's subdiv (one shared rhythmic
+    // grid keeps instruments in sync). Density / NoteLen / Seed remain
+    // independent per instrument and are applied inside the style loop.
+    int    subdiv      = mm::normalized_subdiv(paramValues[mm::kParamSubdiv]);
+    double slotBeats   = 1.0 / static_cast<double>(subdiv);
+
+    // Update global section volume ramp once per process block.
+    {
+        static constexpr float kSecVol[kSecCount] = { 1.0f, 1.0f, 1.15f, 0.75f, 0.0f };
+        int   sec    = currentSection.load(std::memory_order_relaxed);
+        float target = kSecVol[std::clamp(sec, 0, (int)kSecCount - 1)];
+        float bblock = (float)((double)nframes * beatsPerSample);
+        float rate   = bblock / ((sec==kSecIntro || sec==kSecOutro) ? 16.0f : 4.0f);
+        if (sectionVolumeRamp < target) sectionVolumeRamp = std::min(target, sectionVolumeRamp + rate);
+        else                            sectionVolumeRamp = std::max(target, sectionVolumeRamp - rate);
+        // Mark the Intro fade as done once volume reaches 1 for the first time.
+        if (!introFadeDone && sectionVolumeRamp >= 1.0f && currentSection.load(std::memory_order_relaxed) == kSecIntro)
+            introFadeDone = true;
+    }
+
+    int64_t firstSlot = static_cast<int64_t>(
+        std::ceil(beatPos / slotBeats - 1e-9));
+    if (firstSlot <= lastSlot) firstSlot = lastSlot + 1;
+
+    for (int64_t slot = firstSlot; ; ++slot) {
+        double slotBeat = slot * slotBeats;
+        if (slotBeat >= blockEndBeat) break;
+
+        double offsetBeats = slotBeat - beatPos;
+        int32  sampleOffset = static_cast<int32>(
+            std::max(0.0, std::floor(offsetBeats / beatsPerSample)));
+        if (sampleOffset >= static_cast<int32>(nframes)) break;
+
+        // Compute slot position weight (shared across instruments).
+        int barLen     = subdiv * 4;
+        int posInBar   = (int)(((slot % barLen) + barLen) % barLen);
+        int beatInBar  = posInBar / subdiv;          // 0..3
+        int subInBeat  = posInBar % subdiv;
+        bool isDown    = (subInBeat == 0);
+        bool isStrong  = isDown && (beatInBar % 2 == 0);
+        double posWeight = isStrong ? 1.20 : isDown ? 1.00 : 0.55;
+        lastSlot = slot;
+
+        const uint32_t enabledMask = getEnabledMask();
+        // Per-style velocity is computed inside the loop now.
+
+        // ---- Auto key/mode from listened context ----------------------
+        // Run Krumhansl-Schmuckler on the rolling pitch-class histogram
+        // collected from incoming MIDI on both buses. Only override the
+        // user params when we have enough material to be confident.
+        int detectedKey = -1, detectedMode = -1;
+        if (getAutoKey()) {
+            double hist[12];
+            ctxSnapshot(hist);
+            double total = 0.0;
+            for (int i = 0; i < 12; ++i) total += hist[i];
+            if (total > 2.0) {
+                int r, m;
+                mm::detect_key(hist, r, m);
+                detectedKey  = r;
+                detectedMode = m; // 0=Major, 1=Minor (matches our enum)
+            }
+            // Slow decay so the analyser tracks modulations over time
+            // (â‰ˆ 0.5% per generation slot).
+            ctxDecay(0.995);
+        }
+
+        // Iterate over every enabled instrument tab. Each style now has
+        // its own Density / NoteLen / Seed / Mode / Progression /
+        // Wave â€” only the master rhythmic grid (Subdiv) is shared.
+        // firedThisSlot[s]=true once style s emits a note this slot.
+        // Styles processed later (e.g. bass=2) can read earlier ones
+        // (Melodie=0, Arpege=1) for cross-style JAM gating.
+        bool firedThisSlot[kStyleCount] = {};
+
+        // Pre-compute whether drums (style 3) fire this slot so that
+        // bass JAM gating can use it even though bass runs before drums.
+        bool drumFiresThisSlot = false;
+        if ((enabledMask >> 3) & 1u) {
+            int slotsPerStep3 = std::max(1, barLen / 16);
+            int posInBar3 = (int)(((slot % barLen) + barLen) % barLen);
+            if (posInBar3 % slotsPerStep3 == 0) {
+                int step3 = (posInBar3 / slotsPerStep3) % 16;
+                int pidx3 = std::clamp(percRhythmPerStyle[3], 0, mm::kDrumPatternCount - 1);
+                const auto& pat3 = mm::kDrumPatterns[pidx3];
+                for (int h = 0; h < 4; ++h) {
+                    if (pat3.steps[step3][h].pitch != 0 && pat3.steps[step3][h].vel != 0) {
+                        drumFiresThisSlot = true; break;
+                    }
+                }
+            }
+        }
+
+        for (int styleIdx = 0; styleIdx < kStyleCount; ++styleIdx) {
+            if (!((enabledMask >> styleIdx) & 1u)) continue;
+            if (!isStyleAudible(styleIdx)) continue;  // mute / solo gate
+            // Per-style start-bar: suppress notes until N bars have elapsed.
+            if (startBarPerStyle[styleIdx] > 0) {
+                int64_t currentBar = slot / (int64_t)barLen;
+                if (currentBar < (int64_t)startBarPerStyle[styleIdx]) continue;
+            }
+            const int style    = styleIdx;
+            const double* sp   = paramValuesPerStyle[styleIdx];
+            const int    sSeed = (int)std::round(sp[mm::kParamSeed]);
+            const double sDens = std::clamp(sp[mm::kParamDensity], 0.0, 1.0);
+            const double sNL   = std::clamp(sp[mm::kParamNoteLen], 0.05, 1.0);
+            const int    sProg = std::clamp(progPerStyle[styleIdx],
+                                            0, mm::kProgressionCount - 1);
+
+            // Per-style density gate (independent RNG per instrument).
+            // Mix EVERY style param into the seed so any GUI tweak
+            // instantly produces a different roll â€” Density, NoteLen,
+            // Mode, Wave, Progression, percRhythm, pianoMelody, even
+            // Subdiv all participate. This guarantees real-time
+            // refresh of the audio output on every parameter change.
+            uint32_t paramSalt = 0u;
+            for (int pi = 0; pi < (int)mm::kParamCount; ++pi) {
+                // Quantize to int to ignore tiny float jitter from host.
+                int32_t q = (int32_t)std::round(sp[pi] * 1000.0);
+                paramSalt = paramSalt * 2654435761u
+                          + static_cast<uint32_t>(q) + 0x9E3779B9u;
+            }
+            paramSalt ^= static_cast<uint32_t>(wavePerStyle[styleIdx])    * 0x85EBCA6Bu;
+            paramSalt ^= static_cast<uint32_t>(progPerStyle[styleIdx])    * 0xC2B2AE35u;
+            paramSalt ^= static_cast<uint32_t>(percRhythmPerStyle[styleIdx]) * 0x27D4EB2Fu;
+            paramSalt ^= static_cast<uint32_t>(pianoMelodyPerStyle[styleIdx] ? 1u : 0u) * 0x165667B1u;
+
+            uint32_t rng = static_cast<uint32_t>(
+                slot * 2246822519u
+                + static_cast<uint32_t>(sSeed)    * 374761393u
+                + static_cast<uint32_t>(styleIdx) * 2654435761u
+                + paramSalt + 1u);
+            if (!rng) rng = 1;
+
+            // Per-style timing offset: Humanize (random jitter) + Retard (groove delay).
+            float humanize = humanizePerStyle[styleIdx];
+            float retard   = retardPerStyle[styleIdx];
+            int32 retardSamples = (int32)std::round(
+                retard * slotBeats * 0.5 / beatsPerSample);
+            int32 humanizeSamples = 0;
+            if (humanize > 0.0f) {
+                uint32_t hr = rng ^ 0xFACE7777u ^ (uint32_t)(styleIdx * 99991u);
+                float ratio = ((float)(mm::xorshift32(hr) % 2001) / 2000.f - 0.5f) * 2.0f;
+                humanizeSamples = (int32)std::round(
+                    ratio * humanize * slotBeats * 0.25 / beatsPerSample);
+            }
+            int32 styleOffset = std::max((int32)0,
+                std::min((int32)nframes - 1,
+                         sampleOffset + retardSamples + humanizeSamples));
+
+
+            // own density via the pattern / chord layout. Gating them
+            // with the global Density knob would punch random holes in
+            // the rhythm, which is exactly the "pauses gÃªnantes" the
+            // user reported. Density is therefore only applied to the
+            // melodic styles (MÃ©lodie / Harpe / Basse / Marimba).
+            if (style != 3 && style != 5) {
+                double roll = static_cast<double>(mm::xorshift32(rng))
+                            / static_cast<double>(0xFFFFFFFFu);
+                double effDensity;
+                if (style == 2) {
+                    // Basse: temps forts (1,3) toujours, beat 2/4 seulement à haute densité,
+                    // off-beats quasi jamais. Produit une ligne de basse sparse et groovy.
+                    if (isStrong) {
+                        effDensity = 0.80 + 0.20 * sDens;   // ~80-100% sur beats 1,3
+                    } else if (isDown) {
+                        effDensity = (sDens > 0.65) ? (sDens - 0.65) / 0.35 : 0.0;
+                    } else {
+                        effDensity = (sDens > 0.88) ? (sDens - 0.88) / 0.12 : 0.0;
+                    }
+                } else {
+                    // Strong beats (beat 1/3): floor at 65%, reaches 100% at max density.
+                    // Downbeats (all beat onsets): start firing at Density >= 25%.
+                    // Off-beats (subdivisions): start firing at Density >= 55%.
+                    if (isStrong) {
+                        effDensity = 0.65 + 0.35 * sDens;
+                    } else if (isDown) {
+                        effDensity = (sDens > 0.25) ? (sDens - 0.25) / 0.75 : 0.0;
+                    } else {
+                        effDensity = (sDens > 0.55) ? (sDens - 0.55) / 0.45 : 0.0;
+                    }
+                }
+                if (roll > effDensity) continue;
+
+                // JAM mode for bass: gate on drums (pre-computed) + any
+                // melodic style that already fired. Strong beats always pass
+                // so the bass anchors the chord regardless.
+                if (style == 2 && jamPerStyle[styleIdx]) {
+                    bool anyFired = drumFiresThisSlot
+                                 || firedThisSlot[0] || firedThisSlot[1]
+                                 || firedThisSlot[4] || firedThisSlot[5];
+                    if (!anyFired && !isStrong) continue;
+                }
+            } else {
+                // Still consume one RNG step so the velocity humanizer
+                // below stays seeded the same way for all styles.
+                mm::xorshift32(rng);
+            }
+
+            // Velocity roll, also per style.
+            uint32_t velRng = rng;
+            float baseVelShared = 0.7f + 0.25f * (
+                static_cast<float>(mm::xorshift32(velRng))
+                / static_cast<float>(0xFFFFFFFFu));
+            if (baseVelShared > 1.f) baseVelShared = 1.f;
+
+            // Generate one note per held trigger key.
+            // CHORD MODE: when 2+ trigger notes are held simultaneously,
+            // analyse them as a chord and use the detected harmonic context
+            // (root, mode, progression) for ALL styles — instead of naively
+            // transposing the same melody N times (which sounds chaotic).
+            // Single-note trigger keeps the original behaviour (key = trigger pitch).
+            mm::ChordContext chordCtx{-1, -1, -1};
+            if (triggerCount >= 2) {
+                int pitches[8];
+                for (int ti = 0; ti < triggerCount; ++ti)
+                    pitches[ti] = triggerStack[ti].pitch;
+                chordCtx = mm::detect_chord(pitches, triggerCount);
+            }
+
+            // When in chord mode, generate one voice (not N duplicates).
+            int effectiveTriggers = (chordCtx.root >= 0) ? 1 : triggerCount;
+
+            for (int ti = 0; ti < effectiveTriggers; ++ti) {
+                // Drums and Piano-chords don't follow trigger pitch â€“
+                // they only need to fire once per slot regardless of
+                // how many MIDI keys are held.
+                if ((style == 3 || style == 5) && ti > 0) continue;
+                // Build per-trigger params: take this style's params, then
+                // overwrite Key/Octave from the trigger pitch (and from
+                // chord detection or auto-key detection if active).
+                double trigParams[mm::kParamCount];
+                std::copy(sp, sp + mm::kParamCount, trigParams);
+                // GUI Octave knob = offset relative to the trigger note's octave.
+                // Param stores 3-6, default=4 (→ +0). So offset = guiOct - 4.
+                int guiOctOffset = (int)std::round(sp[mm::kParamOctave]) - 4;
+                if (chordCtx.root >= 0) {
+                    // Chord mode: the detected root sets the KEY (tonal centre),
+                    // but the MODE knob in the GUI stays as the user's colour choice.
+                    // Example: C+E+G (major triad) + Mode=Lydien → C Lydien,
+                    // the #4 (F#) is the added colour note. Only the progression
+                    // is suggested by the chord quality (it fits that harmony best).
+                    int lowestPitch = triggerStack[0].pitch;
+                    for (int ti2 = 1; ti2 < triggerCount; ++ti2)
+                        if (triggerStack[ti2].pitch < lowestPitch)
+                            lowestPitch = triggerStack[ti2].pitch;
+                    trigParams[mm::kParamKey]  = (double)chordCtx.root;
+                    // kParamMode is NOT overridden — GUI value (sp[kParamMode]) is kept.
+                    int oct = (lowestPitch / 12) - 1 + guiOctOffset;
+                    trigParams[mm::kParamOctave] = (double)std::clamp(oct, 3, 6);
+                } else {
+                    // Single-note mode: trigger pitch + GUI octave offset.
+                    trigParams[mm::kParamKey] = (double)(triggerStack[ti].pitch % 12);
+                    int oct = (triggerStack[ti].pitch / 12) - 1 + guiOctOffset;
+                    trigParams[mm::kParamOctave] = (double)std::clamp(oct, 3, 6);
+                }
+                if (detectedKey >= 0 && chordCtx.root < 0) {
+                    // Auto-key only applies in single-note mode.
+                    trigParams[mm::kParamKey]  = (double)detectedKey;
+                    trigParams[mm::kParamMode] = (double)detectedMode;
+                }
+                // Effective progression: chord-detected overrides style setting.
+                int effectiveProg = (chordCtx.prog >= 0)
+                    ? chordCtx.prog
+                    : sProg;
+                // Vary pitch rng per trigger so voices aren't identical
+                uint32_t trigRng = rng ^ (uint32_t)(ti * 1234567u + styleIdx * 2654435761u + 1u);
+                if (!trigRng) trigRng = 1;
+                mm::xorshift32(trigRng);
+
+                // Build the list of voices to emit for this slot. Most
+                // styles produce a single pitch; Piano emits a 3-note
+                // chord (+optional melody) and Percussion can emit up
+                // to 3 simultaneous drums from the active rhythm.
+                StyleVoices voices;
+                voicesForStyle(style, trigParams,
+                    slot + (int64_t)(ti * 7919) + (int64_t)(styleIdx * 104729),
+                    effectiveProg,
+                    pianoMelodyPerStyle[styleIdx],
+                    pianoChordPerStyle[styleIdx],
+                    percRhythmPerStyle[styleIdx],
+                    jamPerStyle[styleIdx],
+                    percRhythmPerStyle[3], // style 3 = Percu., used for JAM rhythm ref
+                    voices);
+                if (voices.count == 0) continue;
+
+                for (int vi = 0; vi < voices.count; ++vi) {
+                    int16_t pitch = voices.pitches[vi];
+                    float velocity;
+                    if (style == 3) {
+                        // Drum patterns already encode their own accents
+                        // (kick = 110, ghost snare = 40 â€¦). Re-applying
+                        // velForStyle's strong/weak-beat accent would
+                        // squash that character and make every rhythm
+                        // sound the same. Use the pattern's velocity
+                        // directly + a tiny seed-driven humanization.
+                        uint32_t hRng = rng ^ (uint32_t)(vi * 2654435761u + 0x9E37u);
+                        if (!hRng) hRng = 1;
+                        float jitter = ((float)(mm::xorshift32(hRng) % 1000) / 1000.f - 0.5f) * 0.12f;
+                        velocity = voices.vels[vi] * (1.0f + jitter);
+                    } else {
+                        velocity = velForStyle(style, slot, sp, baseVelShared)
+                                 * voices.vels[vi];
+                    }
+                    if (velocity > 1.f) velocity = 1.f;
+                    if (velocity < 0.05f) velocity = 0.05f;
+                    // Apply section envelope.
+                    velocity *= sectionVolumeRamp;
+                    if (velocity > 1.f) velocity = 1.f;
+                    if (velocity < 0.0f) velocity = 0.0f;
+                    int32 noteId  = nextNoteId++;
+                // Fixed MIDI channel per style for multi-timbral hosts (e.g. Omnisphere).
+                int16 channel = (int16)styleIdx;  // one fixed channel per style (0=Voix..5=Piano)
+
+                if (outEvents) {
+                    Event on{};
+                    on.type              = Event::kNoteOnEvent;
+                    on.sampleOffset      = styleOffset;
+                    on.noteOn.channel    = channel;
+                    on.noteOn.pitch      = static_cast<int16>(pitch);
+                    on.noteOn.velocity   = std::clamp(velocity * sfVolumePerStyle[styleIdx], 0.0f, 1.0f);
+                    on.noteOn.noteId     = noteId;
+                    outEvents->addEvent(on);
+                }
+                if (ti == 0 && style == getStyleType()) {
+                    uint32_t h = noteHistHead.fetch_add(1, std::memory_order_relaxed);
+                    noteHist[h % kNoteHistSize] = pitch;
+                }
+
+                // Schedule the corresponding note-off.
+                double  noteBeats = noteLenForStyle(style, slotBeats, sNL);
+                if (style != 3) {
+                    // Small random variation around the base length (±30% max).
+                    // Keep it relative so NoteLen=100% stays long.
+                    uint32_t lenRng = rng ^ 0xA5A5u ^ (uint32_t)(styleIdx * 13);
+                    uint32_t r = mm::xorshift32(lenRng);
+                    if      (isStrong && (r % 5) == 0) noteBeats *= 1.40;
+                    else if (isStrong && (r % 7) == 0) noteBeats *= 1.80;
+                    else if (!isDown  && (r % 6) == 0) noteBeats *= 0.65;
+                }
+                int64_t offSample = static_cast<int64_t>(styleOffset)
+                                  + static_cast<int64_t>(
+                                        std::round(noteBeats / beatsPerSample));
+                if (offSample <= styleOffset) offSample = styleOffset + 1;
+
+                const bool isPerc = (style == 3);
+                triggerVoice(pitch, velocity,
+                    offSample < (int64_t)nframes ? offSample : -1, isPerc, noteId,
+                    styleIdx);
+                firedThisSlot[styleIdx] = true;
+
+                if (recMtx.try_lock()) {
+                    if (recNotes.size() < 65536)
+                        recNotes.push_back({slotBeat - recStartBeat, noteBeats, pitch, velocity, (uint8_t)style});
+                    recMtx.unlock();
+                }
+
+                if (offSample < static_cast<int64_t>(nframes)) {
+                    if (outEvents) {
+                        Event off{};
+                        off.type             = Event::kNoteOffEvent;
+                        off.sampleOffset     = static_cast<int32>(offSample);
+                        off.noteOff.channel  = channel;
+                        off.noteOff.pitch    = static_cast<int16>(pitch);
+                        off.noteOff.noteId   = noteId;
+                        off.noteOff.velocity = 0.f;
+                        outEvents->addEvent(off);
+                    }
+                } else {
+                    activeNotes.push_back({
+                        static_cast<int16_t>(pitch), channel, noteId,
+                        offSample - static_cast<int64_t>(nframes)
+                    });
+                }
+                } // end voice loop
+            } // end trigger loop
+        } // end style loop
+    }
+
+    // -- Render internal oscillator voices to audio output --
+    renderVoices(data.outputs, data.numOutputs, nframes);
+
+    return kResultOk;
+}
 
 IPlugView* PLUGIN_API MelodyMakerVST3::createView(FIDString name) {
     if (name && std::strcmp(name, ViewType::kEditor) == 0)
@@ -5293,7 +2961,7 @@ BEGIN_FACTORY_DEF(
         INLINE_UID(0xA3F7E291, 0x5CB24D18, 0x87A04E2C, 0x9B8D1F05),
         PClassInfo::kManyInstances,
         kVstAudioEffectClass,
-        "Midnight Melody Maker",
+        "Midnight Melody Maker (beta)",
         0,              // component flags
         "Instrument",   // sub-category â†’ FL Studio shows it as a Generator
         "1.0.0",

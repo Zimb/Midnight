@@ -1,0 +1,58 @@
+ICHIGOS PATTERN ANALYSIS SUMMARY
+============================================================
+Fichiers analyses : 370
+Contours RH uniques : 1586
+Rythmes RH uniques  : 1049
+Rythmes LH uniques  : 665
+Voicings LH uniques : 61
+
+Styles main gauche :
+  arpeggio           88
+  empty              87
+  block_chord        73
+  bass_melody        37
+  single_note        34
+  octave_bass        32
+  alberti            19
+
+Top contours RH :
+  4 3 1 1  [descent]  ×4
+  1 1 1 1  [rise]  ×52
+  2 1 5 4  [zigzag-up]  ×0
+  4 3 2 4  [valley]  ×2
+  4 3 4 1  [wave]  ×0
+  1 5 4 4  [wave]  ×2
+  5 5 5 5  [rise]  ×96
+  1 1 1 5  [rise]  ×7
+
+Top rythmes RH :
+  0x5555  x.x.x.x.x.x.x.x.  dense  ×919
+  0x1111  x...x...x...x...  quarter notes  ×535
+  0x0999  x..xx..xx..x....  light syncopation  ×0
+  0x1001  x...........x...  mixed  ×212
+  0xFFFF  xxxxxxxxxxxxxxxx  very dense  ×214
+  0x0155  x.x.x.x.x.......  shuffle  ×106
+  0x7FFF  xxxxxxxxxxxxxxx.  very dense  ×92
+  0x1501  x.......x.x.x...  mixed  ×38
+
+Top rythmes LH :
+  0x1055  x.x.x.x.....x...  shuffle  ×53
+  0x1111  x...x...x...x...  quarter notes  ×466
+  0x7FFF  xxxxxxxxxxxxxxx.  very dense  ×82
+  0x051F  xxxxx...x.x.....  shuffle  ×0
+  0x5555  x.x.x.x.x.x.x.x.  dense  ×1388
+  0x7575  x.x.xxx.x.x.xxx.  dense  ×18
+  0x4145  x.x...x.x.....x.  offbeat  ×1
+  0x1511  x...x...x.x.x...  quarter notes  ×19
+
+Top voicings LH :
+  R+3rd                     ×2650
+  R+5th                     ×2416
+  R+3rd+5th                 ×1765
+  R+4th                     ×1070
+  R+6th                     ×954
+  R+3rd+6th                 ×581
+  R+4th+6th                 ×505
+  R+7th                     ×492
+  R+2nd                     ×486
+  R+5th+7th                 ×332

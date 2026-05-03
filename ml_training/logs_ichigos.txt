@@ -1,0 +1,467 @@
+﻿
+================================================================
+  Analyse ichigos ÔÇö 371 fichiers MIDI
+================================================================
+
+  [   1/371]  Chrono Cross\Crossing the Seas_888.mid                        RH:32cnt  LH:single_note/0chd  G major
+  [   2/371]  Chrono Cross\Fragments of Dreams_889.mid                      RH:32cnt  LH:empty/0chd  A major
+  [   3/371]  Chrono Cross\Guldove (Another World)_3385.mid                 RH:32cnt  LH:empty/0chd  G major
+  [   4/371]  Chrono Cross\Lena on the Beach_890.mid                        RH:25cnt  LH:empty/0chd  F major
+  [   5/371]  Chrono Cross\Reminiscence_891.mid                             RH:0cnt  LH:block_chord/108chd  F major
+  [   6/371]  Chrono Cross\Scar of Time_1379.mid                            RH:30cnt  LH:empty/0chd  E minor
+  [   7/371]  Chrono Cross\Time's Scar_892.mid                              RH:20cnt  LH:block_chord/106chd  E minor
+  [   8/371]  Chrono Trigger\At the Bottom of Night_1102.mid                RH:31cnt  LH:octave_bass/0chd  D minor
+  [   9/371]  Chrono Trigger\At the Bottom of Night_5221.mid                RH:31cnt  LH:single_note/0chd  D minor
+  [  10/371]  Chrono Trigger\Battle with Magus_893.mid                      RH:4cnt  LH:block_chord/96chd  E minor
+  [  11/371]  Chrono Trigger\Chrono Trigger - Frog's Theme_1525.mid         RH:32cnt  LH:arpeggio/40chd  G# minor
+  [  12/371]  Chrono Trigger\Chrono Trigger Theme_2324.mid                  RH:30cnt  LH:empty/0chd  B minor
+  [  13/371]  Chrono Trigger\End of Time_1103.mid                           RH:32cnt  LH:empty/0chd  E minor
+  [  14/371]  Chrono Trigger\To Far Away Times_1797.mid                     RH:32cnt  LH:octave_bass/0chd  G# major
+  [  15/371]  Chrono Trigger\To Good Friends_894.mid                        RH:31cnt  LH:single_note/0chd  D# major
+  [  16/371]  Chrono Trigger\Wind scene_4651.mid                            RH:25cnt  LH:arpeggio/46chd  A minor
+  [  17/371]  Chrono Trigger\World Revolution_895.mid                       RH:32cnt  LH:empty/0chd  C major
+  [  18/371]  Final Fantasy\Final Fantasy Simphony_1344.mid                 RH:25cnt  LH:block_chord/116chd  G major
+  [  19/371]  Final Fantasy\Prelude_3890.mid                                RH:32cnt  LH:empty/0chd  C major
+  [  20/371]  Final Fantasy Adventure\Temple of Mana_2367.mid               RH:32cnt  LH:alberti/0chd  C minor
+  [  21/371]  Final Fantasy Fables_ Chocobo's Dungeon\Door Crawl_3221.mid   RH:32cnt  LH:single_note/0chd  G# minor
+  [  22/371]  Final Fantasy I\Cornelia Castle_896.mid                       RH:17cnt  LH:empty/0chd  D major
+  [  23/371]  Final Fantasy I\Final Fantasy_897.mid                         RH:32cnt  LH:single_note/0chd  C major
+  [  24/371]  Final Fantasy I\FinalFantasy I Main Theme_1480.mid            RH:32cnt  LH:single_note/0chd  C major
+  [  25/371]  Final Fantasy I\Main Theme_898.mid                            RH:0cnt  LH:arpeggio/92chd  D major
+  [  26/371]  Final Fantasy I\Matouya's Cave_899.mid                        RH:32cnt  LH:alberti/0chd  D major
+  [  27/371]  Final Fantasy I\Matoyas Cave_2844.mid                         RH:32cnt  LH:single_note/0chd  D major
+  [  28/371]  Final Fantasy I\Prelude_900.mid                               RH:32cnt  LH:empty/0chd  A# major
+  [  29/371]  Final Fantasy I\Sailing Ship_1483.mid                         RH:31cnt  LH:empty/0chd  C major
+  [  30/371]  Final Fantasy I\Sailing Ship_901.mid                          RH:31cnt  LH:empty/0chd  F major
+  [  31/371]  Final Fantasy I\The Castle_1879.mid                           RH:17cnt  LH:alberti/0chd  F# minor
+  [  32/371]  Final Fantasy I\The Town_1880.mid                             RH:17cnt  LH:bass_melody/0chd  C major
+  [  33/371]  Final Fantasy I\Town Theme_1769.mid                           RH:30cnt  LH:empty/0chd  C major
+  [  34/371]  Final Fantasy I\Underwater Palace_902.mid                     RH:32cnt  LH:bass_melody/44chd  E minor
+  [  35/371]  Final Fantasy II\Battle Theme_903.mid                         RH:26cnt  LH:octave_bass/0chd  A minor
+  [  36/371]  Final Fantasy II\Main Theme_Overworld_3248.mid                RH:31cnt  LH:bass_melody/2chd  G major
+  [  37/371]  Final Fantasy II\Main Theme_Overworld_3256.mid                RH:31cnt  LH:bass_melody/2chd  G major
+  [  38/371]  Final Fantasy III\Boundless Ocean_1163.mid                    RH:24cnt  LH:empty/0chd  B minor
+  [  39/371]  Final Fantasy III\Crystal Tower_2166.mid                      RH:21cnt  LH:bass_melody/0chd  A minor
+  [  40/371]  Final Fantasy III\Cute Little Tozas_904.mid                   RH:30cnt  LH:alberti/0chd  F major
+  [  41/371]  Final Fantasy III\Eternal Wind_2199.mid                       RH:32cnt  LH:arpeggio/73chd  A minor
+  [  42/371]  Final Fantasy IV\Battle Theme_905.mid                         RH:30cnt  LH:octave_bass/0chd  C major
+  [  43/371]  Final Fantasy IV\Golbeza, Clad in the Dark_906.mid            RH:32cnt  LH:arpeggio/1chd  E major
+  [  44/371]  Final Fantasy IV\Melody of lute_4780.mid                      RH:32cnt  LH:empty/0chd  C major
+  [  45/371]  Final Fantasy IV\Rydia - Lydia_907.mid                        RH:32cnt  LH:arpeggio/64chd  C major
+  [  46/371]  Final Fantasy IV\The Prologue_908.mid                         RH:3cnt  LH:block_chord/127chd  F major
+  [  47/371]  Final Fantasy IV\Theme of Love_2664.mid                       RH:22cnt  LH:bass_melody/3chd  G major
+  [  48/371]  Final Fantasy IV\Theme of Love_909.mid                        RH:17cnt  LH:single_note/0chd  G major
+  [  49/371]  Final Fantasy IX\Aloha de Chocobo_940.mid                     RH:32cnt  LH:empty/0chd  C major
+  [  50/371]  Final Fantasy IX\Battle 1_4359.mid                            RH:27cnt  LH:octave_bass/0chd  A minor
+  [  51/371]  Final Fantasy IX\Cid's Theme_4633.mid                         RH:26cnt  LH:arpeggio/2chd  A minor
+  [  52/371]  Final Fantasy IX\Eternal Harvest (really fun to play! ^__^)_  RH:25cnt  LH:bass_melody/5chd  A minor
+  [  53/371]  Final Fantasy IX\Freya's theme_4344.mid                       RH:32cnt  LH:arpeggio/81chd  D minor
+  [  54/371]  Final Fantasy IX\Melodies of Life (C major)_944.mid           RH:32cnt  LH:single_note/0chd  C major
+  [  55/371]  Final Fantasy IX\Melodies of Life_1442.mid                    RH:29cnt  LH:bass_melody/0chd  D major
+  [  56/371]  Final Fantasy IX\Melodies of Life_942.mid                     RH:32cnt  LH:empty/0chd  E major
+  [  57/371]  Final Fantasy IX\Melodies of Life_943.mid                     RH:32cnt  LH:single_note/0chd  E major
+  [  58/371]  Final Fantasy IX\One danger put behind us_4606.mid            RH:28cnt  LH:arpeggio/32chd  A minor
+  [  59/371]  Final Fantasy IX\Qu's Hymne_Hymne des Kwes_4632.mid           RH:26cnt  LH:alberti/12chd  D minor
+  [  60/371]  Final Fantasy IX\Ruins of the Madain Sari_4600.mid            RH:7cnt  LH:arpeggio/106chd  F# minor
+  [  61/371]  Final Fantasy IX\Song of Memory_945.mid                       RH:23cnt  LH:empty/0chd  F major
+  [  62/371]  Final Fantasy IX\The place i'll return someday_4567.mid       RH:32cnt  LH:arpeggio/109chd  D major
+  [  63/371]  Final Fantasy IX\The place i'll return to somaday_4343.mid    RH:32cnt  LH:block_chord/121chd  D major
+  [  64/371]  Final Fantasy IX\Vivi's Theme_4346.mid                        RH:28cnt  LH:alberti/37chd  E major
+  [  65/371]  Final Fantasy V\Battle with Gilgamesh (part 1)_1305.mid       RH:18cnt  LH:alberti/35chd  F minor
+  [  66/371]  Final Fantasy V\Battle with Gilgamesh (part 2)_1306.mid       RH:31cnt  LH:arpeggio/77chd  C minor
+  [  67/371]  Final Fantasy V\Lenna's Theme_910.mid                         RH:32cnt  LH:empty/0chd  C major
+  [  68/371]  Final Fantasy V\Pirates Ahoy !_4609.mid                       RH:32cnt  LH:arpeggio/59chd  D minor
+  [  69/371]  Final Fantasy V\Royal Palace - Hard version_4612.mid          RH:31cnt  LH:block_chord/114chd  G major
+  [  70/371]  Final Fantasy V\The Royal Palace_911.mid                      RH:32cnt  LH:arpeggio/106chd  F# major
+  [  71/371]  Final Fantasy VI\Awakening_1468.mid                           RH:14cnt  LH:block_chord/122chd  A minor
+  [  72/371]  Final Fantasy VI\Battle Theme_912.mid                         RH:32cnt  LH:single_note/0chd  D minor
+  [  73/371]  Final Fantasy VI\Edgar and Sabin_913.mid                      RH:0cnt  LH:block_chord/99chd  C minor
+  [  74/371]  Final Fantasy VI\Emporer Gestahl_1068.mid                     RH:30cnt  LH:block_chord/120chd  C minor
+  [  75/371]  Final Fantasy VI\Fanfare_914.mid                              RH:0cnt  LH:block_chord/75chd  D major
+  [  76/371]  Final Fantasy VI\Johnny C. Bad_915.mid                        RH:7cnt  LH:octave_bass/0chd  E major
+  [  77/371]  Final Fantasy VI\Phantom_Mystic Train_2742.mid                RH:26cnt  LH:block_chord/67chd  C minor
+  [  78/371]  Final Fantasy VI\Searching Friends_916.mid                    RH:30cnt  LH:octave_bass/12chd  A minor
+  [  79/371]  Final Fantasy VI\Terra's Theme_2622.mid                       RH:32cnt  LH:single_note/0chd  G# minor
+  [  80/371]  Final Fantasy VI\Terra_917.mid                                RH:32cnt  LH:octave_bass/0chd  C major
+  [  81/371]  Final Fantasy VI\The Decisive Battle_918.mid                  RH:32cnt  LH:arpeggio/82chd  A minor
+  [  82/371]  Final Fantasy VI\The Fierce Battle_4358.mid                   RH:32cnt  LH:alberti/0chd  A minor
+  [  83/371]  Final Fantasy VI\The Mystic_Phantom Forest_919.mid            RH:22cnt  LH:arpeggio/80chd  A minor
+  [  84/371]  Final Fantasy VI\The Phantom Forest_920.mid                   RH:22cnt  LH:arpeggio/80chd  A minor
+  [  85/371]  Final Fantasy VI\Victory_921.mid                              RH:0cnt  LH:block_chord/75chd  D major
+  [  86/371]  Final Fantasy VII\Aeris' Theme_922.mid                        RH:32cnt  LH:bass_melody/32chd  D major
+  [  87/371]  Final Fantasy VII\Battle Theme_1963.mid                       RH:29cnt  LH:arpeggio/92chd  F minor
+  [  88/371]  Final Fantasy VII\Battle Theme_923.mid                        RH:26cnt  LH:arpeggio/61chd  F minor
+  [  89/371]  Final Fantasy VII\Cinco de Chocobo_924.mid                    RH:32cnt  LH:octave_bass/0chd  G major
+  [  90/371]  Final Fantasy VII\Debut_925.mid                               RH:30cnt  LH:empty/0chd  A minor
+  [  91/371]  Final Fantasy VII\Descandant of the Shinobi_1481.mid          RH:32cnt  LH:empty/0chd  G major
+  [  92/371]  Final Fantasy VII\Descendant of the Shinobi_926.mid           RH:15cnt  LH:bass_melody/33chd  G major
+  [  93/371]  Final Fantasy VII\Fanfare_1487.mid                            RH:12cnt  LH:empty/0chd  G# major
+  [  94/371]  Final Fantasy VII\Final Fantasy VII Main Theme_927.mid        RH:32cnt  LH:single_note/0chd  C major
+  [  95/371]  Final Fantasy VII\Final Fantasy VII Theme Piano Version_1467  RH:31cnt  LH:single_note/1chd  E major
+  [  96/371]  Final Fantasy VII\Holding my Thoughts in my Heart_928.mid     RH:32cnt  LH:empty/0chd  F minor
+  [  97/371]  Final Fantasy VII\Interrupted By Fireworks_929.mid            RH:20cnt  LH:octave_bass/6chd  G major
+  [  98/371]  Final Fantasy VII\Interupted by Fireworks_3854.mid            RH:30cnt  LH:arpeggio/80chd  G major
+  [  99/371]  Final Fantasy VII\Jenova Absolute_930.mid                     RH:30cnt  LH:octave_bass/0chd  F minor
+  [ 100/371]  Final Fantasy VII\Main Theme_2432.mid                         RH:22cnt  LH:block_chord/105chd  E major
+  [ 101/371]  Final Fantasy VII\Main Theme_3265.mid                         RH:32cnt  LH:empty/0chd  E major
+  [ 102/371]  Final Fantasy VII\One Winged Angel (Better Version)_1489.mid  RH:30cnt  LH:single_note/0chd  D minor
+  [ 103/371]  Final Fantasy VII\One Winged Angel_1869.mid                   RH:0cnt  LH:block_chord/127chd  D minor
+  [ 104/371]  Final Fantasy VII\One-Winged Angel_1426.mid                   RH:30cnt  LH:alberti/6chd  D minor
+  [ 105/371]  Final Fantasy VII\Rufus' Welcoming Ceremony_931.mid           RH:27cnt  LH:empty/0chd  A major
+  [ 106/371]  Final Fantasy VII\Those Chosen By The Planet_1265.mid         RH:1cnt  LH:block_chord/114chd  D minor
+  [ 107/371]  Final Fantasy VII\Tifa's Theme_932.mid                        RH:31cnt  LH:single_note/0chd  F major
+  [ 108/371]  Final Fantasy VII-Crisis Core\A Changing Situation_4111.mid   RH:31cnt  LH:arpeggio/102chd  C major
+  [ 109/371]  Final Fantasy VII-Crisis Core\A Flower Blooming in the Slums  RH:18cnt  LH:block_chord/122chd  D major
+  [ 110/371]  Final Fantasy VII-Crisis Core\A Moment of Courtesy_2370.mid   RH:25cnt  LH:bass_melody/61chd  G major
+  [ 111/371]  Final Fantasy VII-Crisis Core\Crisis core title_1662.mid      RH:0cnt  LH:arpeggio/30chd  G major
+  [ 112/371]  Final Fantasy VII-Crisis Core\Importance of Truth_1656.mid    RH:0cnt  LH:block_chord/119chd  E minor
+  [ 113/371]  Final Fantasy VII-Crisis Core\Melody of Agony_1402.mid        RH:25cnt  LH:octave_bass/1chd  E minor
+  [ 114/371]  Final Fantasy VII-Crisis Core\The Burdened_1262.mid           RH:31cnt  LH:empty/0chd  E minor
+  [ 115/371]  Final Fantasy VII-Crisis Core\The Price of Freedom_3913.mid   RH:30cnt  LH:arpeggio/34chd  G major
+  [ 116/371]  Final Fantasy VII-Crisis Core\Why_ -Better Version_2088.mid   RH:32cnt  LH:arpeggio/64chd  C major
+  [ 117/371]  Final Fantasy VII_ AC\Aerith's Theme Piano Version_1451.mid   RH:32cnt  LH:single_note/0chd  D major
+  [ 118/371]  Final Fantasy VII_ AC\Cloud Smiles_1545.mid                   RH:26cnt  LH:empty/0chd  G major
+  [ 119/371]  Final Fantasy VII_ AC\cloud smiles_1914.mid                   RH:21cnt  LH:block_chord/126chd  G major
+  [ 120/371]  Final Fantasy VII_ AC\Sign_1425.mid                           RH:6cnt  LH:arpeggio/88chd  G minor
+  [ 121/371]  Final Fantasy VII_ AC\The Promised Land_1367.mid              RH:27cnt  LH:empty/0chd  F minor
+  [ 122/371]  Final Fantasy VII_ AC\The Promised Land_1368.mid              RH:26cnt  LH:empty/0chd  C minor
+  [ 123/371]  Final Fantasy VII_ AC\The Promised Land_1369.mid              RH:31cnt  LH:empty/0chd  F minor
+  [ 124/371]  Final Fantasy VII_ AC\The Promised Land_1370.mid              RH:0cnt  LH:bass_melody/0chd  F minor
+  [ 125/371]  Final Fantasy VII_ AC\The Promised Land_1371.mid              RH:27cnt  LH:block_chord/90chd  F minor
+  [ 126/371]  Final Fantasy VII_ AC\The Promised Land_2890.mid              RH:0cnt  LH:block_chord/112chd  F minor
+  [ 127/371]  Final Fantasy VII_ AC\Theme_933.mid                           RH:32cnt  LH:single_note/0chd  C major
+  [ 128/371]  Final Fantasy VII_ AC\Tifa's Theme Piano Version_1383.mid     RH:32cnt  LH:alberti/0chd  F major
+  [ 129/371]  Final Fantasy VIII\Don't be Afraid (Battle Theme)_3308.mid    RH:28cnt  LH:arpeggio/10chd  D minor
+  [ 130/371]  Final Fantasy VIII\Eyes on Me_934.mid                         RH:28cnt  LH:bass_melody/30chd  D major
+  [ 131/371]  Final Fantasy VIII\Eyes on Me_935.mid                         RH:32cnt  LH:single_note/0chd  A# major
+  [ 132/371]  Final Fantasy VIII\Fisherman's Horizon_936.mid                RH:32cnt  LH:single_note/0chd  D# major
+  [ 133/371]  Final Fantasy VIII\Force Your Way_994.mid                     RH:32cnt  LH:octave_bass/1chd  E major
+  [ 134/371]  Final Fantasy VIII\Julia's Piano Solo_937.mid                 RH:25cnt  LH:bass_melody/9chd  E major
+  [ 135/371]  Final Fantasy VIII\Julia_1708.mid                             RH:2cnt  LH:arpeggio/87chd  E major
+  [ 136/371]  Final Fantasy VIII\Odeka de Chocobo_938.mid                   RH:32cnt  LH:empty/0chd  G major
+  [ 137/371]  Final Fantasy VIII\The Man with the Machine Gun_3373.mid      RH:32cnt  LH:octave_bass/12chd  D minor
+  [ 138/371]  Final Fantasy VIII\Waltz for the moon_1219.mid                RH:25cnt  LH:arpeggio/66chd  F major
+  [ 139/371]  Final Fantasy VIII\Waltz for the Moon_939.mid                 RH:25cnt  LH:arpeggio/66chd  F major
+  [ 140/371]  Final Fantasy X\Calm Before the Storm (Macalania Forest)_166  RH:24cnt  LH:octave_bass/46chd  A# minor
+  [ 141/371]  Final Fantasy X\Otherworld_5458.mid                           RH:29cnt  LH:octave_bass/9chd  C# minor
+  [ 142/371]  Final Fantasy X\Silence Before the Storm_2567.mid             RH:32cnt  LH:empty/0chd  G major
+  [ 143/371]  Final Fantasy X\Someday the Dream Will End_3267.mid           RH:32cnt  LH:single_note/0chd  D minor
+  [ 144/371]  Final Fantasy X\Suteki Da Ne_1077.mid                         RH:30cnt  LH:empty/0chd  D minor
+  [ 145/371]  Final Fantasy X\Suteki Da Ne_1081.mid                         RH:30cnt  LH:empty/0chd  D minor
+  [ 146/371]  Final Fantasy X\Suteki Da Ne_1571.mid                         RH:19cnt  LH:bass_melody/0chd  D minor
+  [ 147/371]  Final Fantasy X\Suteki Da Ne_1578.mid                         RH:19cnt  LH:bass_melody/0chd  D minor
+  [ 148/371]  Final Fantasy X\Suteki Da Ne_1579.mid                         RH:19cnt  LH:bass_melody/0chd  D minor
+  [ 149/371]  Final Fantasy X\Suteki Da Ne_3648.mid                         RH:17cnt  LH:block_chord/109chd  D minor
+  [ 150/371]  Final Fantasy X\Thunder Plateau_2285.mid                      RH:32cnt  LH:empty/0chd  C minor
+  [ 151/371]  Final Fantasy X\To Zanarkand_1078.mid                         RH:32cnt  LH:empty/0chd  B minor
+  [ 152/371]  Final Fantasy X\To Zanarkand_1079.mid                         RH:32cnt  LH:empty/0chd  E minor
+  [ 153/371]  Final Fantasy X\To Zanarkand_1082.mid                         RH:32cnt  LH:empty/0chd  E minor
+  [ 154/371]  Final Fantasy X\To Zanarkand_1692.mid                         RH:32cnt  LH:single_note/0chd  E minor
+  [ 155/371]  Final Fantasy X\To Zanarkand_2605.mid                         RH:32cnt  LH:block_chord/87chd  B minor
+  [ 156/371]  Final Fantasy X\to Zanarkand_2982.mid                         RH:15cnt  LH:block_chord/103chd  E minor
+  [ 157/371]  Final Fantasy X\to Zanarkand_2987.mid                         RH:15cnt  LH:block_chord/103chd  E minor
+  [ 158/371]  Final Fantasy X\To Zanarkand_3436.mid                         RH:29cnt  LH:arpeggio/76chd  G minor
+  [ 159/371]  Final Fantasy X\To Zanarkand_946.mid                          RH:29cnt  LH:single_note/0chd  E minor
+  [ 160/371]  Final Fantasy X\Yuna's Determination (update)_3681.mid        RH:26cnt  LH:block_chord/117chd  C major
+  [ 161/371]  Final Fantasy X\Yuna's Determination_3647.mid                 RH:26cnt  LH:block_chord/117chd  C major
+  [ 162/371]  Final Fantasy X\Yuna's Theme_2405.mid                         RH:27cnt  LH:bass_melody/18chd  D minor
+  [ 163/371]  Final Fantasy X\Yuna's Theme_3486.mid                         RH:28cnt  LH:block_chord/116chd  D minor
+  [ 164/371]  Final Fantasy X-2\1000 Words_1283.mid                         RH:21cnt  LH:alberti/26chd  B major
+  [ 165/371]  Final Fantasy X-2\1000 Words_993.mid                          RH:32cnt  LH:single_note/1chd  B major
+  [ 166/371]  Final Fantasy X-2\Eternity ~Memories of Light and Waves~_546  RH:9cnt  LH:block_chord/115chd  F major
+  [ 167/371]  Final Fantasy XI\Sanctuary of Zi'tah_1366.mid                 RH:12cnt  LH:block_chord/111chd  F minor
+  [ 168/371]  Final Fantasy XI\Sarutabaruta_947.mid                         RH:29cnt  LH:block_chord/107chd  G minor
+  [ 169/371]  Final Fantasy XII\Boss Battle Theme_4613.mid                  RH:31cnt  LH:block_chord/60chd  A# minor
+  [ 170/371]  Final Fantasy XII\Desperate Fight_1066.mid                    RH:16cnt  LH:block_chord/125chd  C minor
+  [ 171/371]  Final Fantasy XII\Eruyt Village_5451.mid                      RH:0cnt  LH:block_chord/106chd  C# minor
+  [ 172/371]  Final Fantasy XIII\Lightning's Theme_1563.mid                 RH:28cnt  LH:arpeggio/52chd  E minor
+  [ 173/371]  Final Fantasy XIII\Prelude to Final Fantasy XIII_1526.mid     RH:22cnt  LH:empty/0chd  A minor
+  [ 174/371]  Final Fantasy XIII\Sazh's Theme_2232.mid                      RH:9cnt  LH:arpeggio/37chd  D minor
+  [ 175/371]  Final Fantasy XIII\Serah's Theme_3919.mid                     RH:16cnt  LH:empty/0chd  C major
+  [ 176/371]  Final Fantasy XIII\Stella's Theme_1972.mid                    RH:5cnt  LH:empty/0chd  F# major
+  [ 177/371]  Final Fantasy XIII\The Promise_1717.mid                       RH:21cnt  LH:octave_bass/13chd  A minor
+  [ 178/371]  Final Fantasy XIII-2\Wish Final Fantasy XIII- 2 Main Theme_4  RH:30cnt  LH:empty/0chd  A# major
+  [ 179/371]  Final Fantasy XIV\Ravana's Theme_3741.mid                     RH:1cnt  LH:alberti/24chd  C minor
+  [ 180/371]  Final Fantasy XV\A Fading Summer's Eve - Relax and Reflect_4  RH:29cnt  LH:octave_bass/24chd  A major
+  [ 181/371]  Final Fantasy XV\ARDYN II_4373.mid                            RH:32cnt  LH:arpeggio/6chd  C minor
+  [ 182/371]  Final Fantasy XV\ARDYN III_4436.mid                           RH:32cnt  LH:arpeggio/26chd  D minor
+  [ 183/371]  Final Fantasy XV\ARDYN_4371.mid                               RH:30cnt  LH:arpeggio/51chd  C minor
+  [ 184/371]  Final Fantasy XV\Cosmogony_4423.mid                           RH:32cnt  LH:arpeggio/9chd  A# minor
+  [ 185/371]  Final Fantasy XV\Crystalline Chill [Main Menu]_5231.mid       RH:32cnt  LH:arpeggio/52chd  C minor
+  [ 186/371]  Final Fantasy XV\Dawn_4428.mid                                RH:32cnt  LH:block_chord/86chd  C minor
+  [ 187/371]  Final Fantasy XV\Day's End Fanfare_4438.mid                   RH:4cnt  LH:block_chord/11chd  C major
+  [ 188/371]  Final Fantasy XV\Departure_4424.mid                           RH:30cnt  LH:arpeggio/78chd  C major
+  [ 189/371]  Final Fantasy XV\Dewdrops at Dawn_4432.mid                    RH:29cnt  LH:arpeggio/70chd  F minor
+  [ 190/371]  Final Fantasy XV\Dining Car_4405.mid                          RH:32cnt  LH:arpeggio/4chd  F minor
+  [ 191/371]  Final Fantasy XV\Encroaching Fear_4448.mid                    RH:24cnt  LH:alberti/10chd  D minor
+  [ 192/371]  Final Fantasy XV\Fantastica!_4429.mid                         RH:13cnt  LH:arpeggio/17chd  A# major
+  [ 193/371]  Final Fantasy XV\Gratia Mundi_3409.mid                        RH:32cnt  LH:bass_melody/95chd  G minor
+  [ 194/371]  Final Fantasy XV\Gratia Mundi_3479.mid                        RH:32cnt  LH:octave_bass/0chd  G minor
+  [ 195/371]  Final Fantasy XV\Hellfire_4407.mid                            RH:31cnt  LH:arpeggio/25chd  D major
+  [ 196/371]  Final Fantasy XV\Horizon_4437.mid                             RH:7cnt  LH:block_chord/14chd  F major
+  [ 197/371]  Final Fantasy XV\Hunt Battle Theme_4269.mid                   RH:17cnt  LH:block_chord/100chd  A minor
+  [ 198/371]  Final Fantasy XV\Love Lost_4439.mid                           RH:32cnt  LH:arpeggio/56chd  E minor
+  [ 199/371]  Final Fantasy XV\Magna Insomnia - Full Version_4370.mid       RH:32cnt  LH:block_chord/73chd  D minor
+  [ 200/371]  Final Fantasy XV\Magna Insomnia [Part 1]_4342.mid             RH:32cnt  LH:block_chord/73chd  C# major
+  [ 201/371]  Final Fantasy XV\Magna Insomnia [Part 2]_4369.mid             RH:31cnt  LH:block_chord/21chd  A minor
+  [ 202/371]  Final Fantasy XV\Magna Insomnia [Part 3]_4313.mid             RH:30cnt  LH:block_chord/57chd  D minor
+  [ 203/371]  Final Fantasy XV\Main Theme from FINAL FANTASY_4406.mid       RH:30cnt  LH:arpeggio/45chd  F major
+  [ 204/371]  Final Fantasy XV\Melancholia_4353.mid                         RH:14cnt  LH:block_chord/102chd  A minor
+  [ 205/371]  Final Fantasy XV\NOX AETERNA_4382.mid                         RH:18cnt  LH:arpeggio/4chd  C minor
+  [ 206/371]  Final Fantasy XV\Prayer de LUNA_4380.mid                      RH:26cnt  LH:arpeggio/28chd  D minor
+  [ 207/371]  Final Fantasy XV\Prologue (Kingsglaive)_4460.mid              RH:32cnt  LH:block_chord/105chd  C minor
+  [ 208/371]  Final Fantasy XV\RAVUS AETERNA_4392.mid                       RH:30cnt  LH:arpeggio/30chd  G minor
+  [ 209/371]  Final Fantasy XV\Relax and Reflect - Pensive_4455.mid         RH:30cnt  LH:arpeggio/38chd  A major
+  [ 210/371]  Final Fantasy XV\Relax and Reflect_4404.mid                   RH:31cnt  LH:octave_bass/0chd  A major
+  [ 211/371]  Final Fantasy XV\Rulings and Revelations - OMNIS LACRIMA (Pi  RH:29cnt  LH:arpeggio/34chd  C minor
+  [ 212/371]  Final Fantasy XV\Shadows Foretold - APOCALYPSIS NOCTIS_4411.  RH:32cnt  LH:block_chord/34chd  G minor
+  [ 213/371]  Final Fantasy XV\Somnus (accompaniment)_3929.mid              RH:30cnt  LH:arpeggio/12chd  C minor
+  [ 214/371]  Final Fantasy XV\Somnus (Instrumental Version)_4433.mid       RH:32cnt  LH:arpeggio/30chd  C minor
+  [ 215/371]  Final Fantasy XV\Somnus Nemoris_3928.mid                      RH:7cnt  LH:block_chord/110chd  C minor
+  [ 216/371]  Final Fantasy XV\Somnus Ultima_4383.mid                       RH:30cnt  LH:arpeggio/71chd  C minor
+  [ 217/371]  Final Fantasy XV\Somnus_3646.mid                              RH:2cnt  LH:block_chord/121chd  C minor
+  [ 218/371]  Final Fantasy XV\Somnus_3846.mid                              RH:22cnt  LH:block_chord/125chd  C minor
+  [ 219/371]  Final Fantasy XV\Somnus_4434.mid                              RH:32cnt  LH:arpeggio/21chd  C minor
+  [ 220/371]  Final Fantasy XV\Song of the Stars_4381.mid                   RH:32cnt  LH:arpeggio/63chd  G minor
+  [ 221/371]  Final Fantasy XV\Sorrow Without Solace_4467.mid               RH:32cnt  LH:block_chord/78chd  G minor
+  [ 222/371]  Final Fantasy XV\Stand By Me_4401.mid                         RH:17cnt  LH:bass_melody/0chd  A major
+  [ 223/371]  Final Fantasy XV\Sunset Waltz_4283.mid                        RH:30cnt  LH:arpeggio/73chd  G minor
+  [ 224/371]  Final Fantasy XV\Sunset Waltz_4284.mid                        RH:30cnt  LH:single_note/0chd  G minor
+  [ 225/371]  Final Fantasy XV\Tenebrae_4335.mid                            RH:31cnt  LH:arpeggio/52chd  C minor
+  [ 226/371]  Final Fantasy XV\The Hunters_4454.mid                         RH:29cnt  LH:alberti/4chd  E minor
+  [ 227/371]  Final Fantasy XV\Up for the Challenge_4372.mid                RH:32cnt  LH:arpeggio/28chd  D# major
+  [ 228/371]  Final Fantasy XV\Valse di Fantastica_5468.mid                 RH:28cnt  LH:empty/0chd  G minor
+  [ 229/371]  Final Fantasy XV\Wanderlust_4650.mid                          RH:32cnt  LH:octave_bass/0chd  F minor
+  [ 230/371]  Kingdom Hearts\Dearly Beloved_2661.mid                        RH:32cnt  LH:arpeggio/65chd  G minor
+  [ 231/371]  Kingdom Hearts\Dearly Beloved_4305.mid                        RH:7cnt  LH:block_chord/128chd  C minor
+  [ 232/371]  Kingdom Hearts\Dearly Beloved_950.mid                         RH:31cnt  LH:block_chord/127chd  G minor
+  [ 233/371]  Kingdom Hearts\Hallow Bastion_1334.mid                        RH:29cnt  LH:empty/0chd  B minor
+  [ 234/371]  Kingdom Hearts\Hallow Bastion_1335.mid                        RH:29cnt  LH:empty/0chd  B minor
+  [ 235/371]  Kingdom Hearts\Hallow Bastion_1336.mid                        RH:29cnt  LH:empty/0chd  B minor
+  [ 236/371]  Kingdom Hearts\Hallow Bastion_1337.mid                        RH:29cnt  LH:empty/0chd  B minor
+  [ 237/371]  Kingdom Hearts\Hallow Bastion_1338.mid                        RH:29cnt  LH:empty/0chd  B minor
+  [ 238/371]  Kingdom Hearts\Hallow Bastion_1339.mid                        RH:29cnt  LH:empty/0chd  B minor
+  [ 239/371]  Kingdom Hearts\Hand in Hand_1342.mid                          RH:32cnt  LH:arpeggio/51chd  C# minor
+  [ 240/371]  Kingdom Hearts\Hikari - Simple and Clean_951.mid              RH:31cnt  LH:single_note/0chd  A# major
+  [ 241/371]  Kingdom Hearts\Hikari_2564.mid                                RH:0cnt  LH:octave_bass/0chd  A# major
+  [ 242/371]  Kingdom Hearts\Hikari_2600.mid                                RH:25cnt  LH:block_chord/86chd  D# major
+  [ 243/371]  Kingdom Hearts\Hollow Bastion_3322.mid                        RH:20cnt  LH:block_chord/116chd  B minor
+  [ 244/371]  Kingdom Hearts\Kingdom Hearts Medley_3352.mid                 RH:29cnt  LH:bass_melody/4chd  A# major
+  [ 245/371]  Kingdom Hearts\Monstrous Monstro_1387.mid                     RH:29cnt  LH:block_chord/74chd  F minor
+  [ 246/371]  Kingdom Hearts\Night of Fate_1075.mid                         RH:32cnt  LH:empty/0chd  G# minor
+  [ 247/371]  Kingdom Hearts\Riku's Theme_2118.mid                          RH:32cnt  LH:bass_melody/36chd  F minor
+  [ 248/371]  Kingdom Hearts\This Is Halloween_1707.mid                     RH:0cnt  LH:block_chord/123chd  G# major
+  [ 249/371]  Kingdom Hearts\Treasured Memories_1028.mid                    RH:32cnt  LH:bass_melody/107chd  A# minor
+  [ 250/371]  Kingdom Hearts\Under the Sea_1706.mid                         RH:2cnt  LH:block_chord/101chd  A# major
+  [ 251/371]  Kingdom Hearts\Welcome to Wonderland_3600.mid                 RH:3cnt  LH:block_chord/113chd  A# major
+  [ 252/371]  Kingdom Hearts 2\Dearly Beloved_2599.mid                      RH:30cnt  LH:block_chord/96chd  C minor
+  [ 253/371]  Kingdom Hearts 2\Friends in My Heart_2209.mid                 RH:12cnt  LH:single_note/0chd  F major
+  [ 254/371]  Kingdom Hearts 358_2 Days\Always on my mind- Original, Compl  RH:18cnt  LH:block_chord/74chd  C minor
+  [ 255/371]  Kingdom Hearts 358_2 Days\Vector to the Heavens_3891.mid      RH:31cnt  LH:block_chord/123chd  C minor
+  [ 256/371]  Kingdom Hearts II\Another Side P2_1323.mid                    RH:24cnt  LH:octave_bass/9chd  C minor
+  [ 257/371]  Kingdom Hearts II\Dearly Beloved II (Reprise)_1784.mid        RH:32cnt  LH:empty/0chd  C minor
+  [ 258/371]  Kingdom Hearts II\Dearly Beloved II_1375.mid                  RH:32cnt  LH:octave_bass/10chd  C minor
+  [ 259/371]  Kingdom Hearts II\Dearly Beloved KH2 Mix_1531.mid             RH:32cnt  LH:empty/0chd  G minor
+  [ 260/371]  Kingdom Hearts II\Lazy Afternoons_5237.mid                    RH:25cnt  LH:block_chord/105chd  G major
+  [ 261/371]  Kingdom Hearts II\Monochrome Dreams (Timeless River)_3464.mi  RH:32cnt  LH:arpeggio/104chd  F major
+  [ 262/371]  Kingdom Hearts II\Monochrome Dreams_1071.mid                  RH:17cnt  LH:single_note/0chd  F# major
+  [ 263/371]  Kingdom Hearts II\Passion_1032.mid                            RH:29cnt  LH:bass_melody/79chd  C# minor
+  [ 264/371]  Kingdom Hearts II\Passion_1033.mid                            RH:29cnt  LH:bass_melody/79chd  C# minor
+  [ 265/371]  Kingdom Hearts II\Reviving Hollow Bastion_1031.mid            RH:24cnt  LH:arpeggio/62chd  B minor
+  [ 266/371]  Kingdom Hearts II\Sinister Shadows_1788.mid                   RH:32cnt  LH:arpeggio/4chd  F minor
+  [ 267/371]  Kingdom Hearts II\The Escapade_2916.mid                       RH:0cnt  LH:bass_melody/100chd  D# major
+  [ 268/371]  Kingdom Hearts II\Waltz of the Damned (Beast's Castle)_3463.  RH:26cnt  LH:arpeggio/93chd  G# minor
+  [ 269/371]  Kingdom Hearts II_ Final Mix\Lazy Afternoons_3488.mid         RH:21cnt  LH:block_chord/101chd  G major
+  [ 270/371]  Kingdom Hearts III\Dearly Beloved III_1280.mid                RH:28cnt  LH:single_note/2chd  G minor
+  [ 271/371]  Kingdom Hearts III\Don't Think Twice_4622.mid                 RH:14cnt  LH:block_chord/128chd  F major
+  [ 272/371]  Kingdom Hearts III\Don't Think Twice_4648.mid                 RH:18cnt  LH:block_chord/128chd  D minor
+  [ 273/371]  Kingdom Hearts III\Vector to the Heavens_4840.mid             RH:31cnt  LH:single_note/0chd  C minor
+  [ 274/371]  Kingdom Hearts III\Versus Yozora_4823.mid                     RH:22cnt  LH:arpeggio/32chd  C major
+  [ 275/371]  Kingdom Hearts_ 358_2 Days\Xion - Final Battle_1726.mid       RH:32cnt  LH:arpeggio/17chd  C minor
+  [ 276/371]  Kingdom Hearts_ Birth By Sleep\Ventus' Theme_3729.mid         RH:32cnt  LH:single_note/0chd  E major
+  [ 277/371]  Kingdom Hearts_ Birth By Sleep\Ventus's Theme_1741.mid        RH:32cnt  LH:single_note/0chd  E major
+  [ 278/371]  Kingdom Hearts_ Chain of Memories\Castle Oblivion_1422.mid    RH:19cnt  LH:octave_bass/3chd  D# minor
+  [ 279/371]  Kingdom Hearts_ Chain of Memories\Destiny Islands_1421.mid    RH:0cnt  LH:arpeggio/61chd  C major
+  [ 280/371]  Kingdom Hearts_ Chain of Memories\Magical Mystery_1448.mid    RH:8cnt  LH:octave_bass/0chd  D major
+  [ 281/371]  Kingdom Hearts_ Chain of Memories\Namine's Theme_2559.mid     RH:32cnt  LH:arpeggio/60chd  F# major
+  [ 282/371]  Legend of Zelda\Link to the Past -- Ending Fanfare_3658.mid   RH:16cnt  LH:block_chord/101chd  C major
+  [ 283/371]  Legend of Zelda\Overworld_2602.mid                            RH:32cnt  LH:arpeggio/98chd  A# minor
+  [ 284/371]  The Legend of Zelda\Lost Woods Duet_2238.mid                  RH:28cnt  LH:arpeggio/87chd  A minor
+  [ 285/371]  The Legend of Zelda 25th Anniversary Concert CD\Gerudo Valle  RH:29cnt  LH:block_chord/84chd  A major
+  [ 286/371]  The Legend of Zelda 25th Anniversary Concert CD\Gerudo Valle  RH:32cnt  LH:alberti/10chd  A major
+  [ 287/371]  Zelda\Level 9 ( Ganon )_2109.mid                              RH:28cnt  LH:octave_bass/0chd  A minor
+  [ 288/371]  Zelda\Lost Woods Piano Duet_2316.mid                          RH:28cnt  LH:arpeggio/87chd  A minor
+  [ 289/371]  Zelda - A Link to the Past Between Worlds\Ravio's Shop_3410.  RH:26cnt  LH:empty/0chd  C major
+  [ 290/371]  Zelda - Breath of the Wild\Fairy Fountain_4338.mid            RH:16cnt  LH:arpeggio/34chd  G minor
+  [ 291/371]  Zelda - Legend of Zelda\Bolero of Fire - Arranged by Sinbios  RH:9cnt  LH:empty/0chd  D minor
+  [ 292/371]  Zelda - Legend of Zelda\Dungeon Music_961.mid                 RH:14cnt  LH:empty/0chd  G minor
+  [ 293/371]  Zelda - Legend of Zelda\Ganon's Theme_991.mid                 RH:29cnt  LH:alberti/14chd  A major
+  [ 294/371]  Zelda - Legend of Zelda\Prelude of Light_1393.mid             RH:5cnt  LH:empty/0chd  D major
+  [ 295/371]  Zelda - Legend of Zelda\Zeldas Lullaby - Hyrule Symphonic Ve  RH:32cnt  LH:bass_melody/34chd  D major
+  [ 296/371]  Zelda - Link to the Past\Credits (very nice piece)_965.mid    RH:24cnt  LH:arpeggio/96chd  G major
+  [ 297/371]  Zelda - Link to the Past\Princess Zeldas Rescue_1063.mid      RH:32cnt  LH:empty/0chd  G major
+  [ 298/371]  Zelda - Link's Awakening\Overworld_962.mid                    RH:32cnt  LH:arpeggio/0chd  A minor
+  [ 299/371]  Zelda - Link's Awakening\Overworld_963.mid                    RH:15cnt  LH:block_chord/99chd  A minor
+  [ 300/371]  Zelda - Link's Awakening\Overworld_964.mid                    RH:32cnt  LH:arpeggio/96chd  A minor
+  [ 301/371]  Zelda - Majora's Mask\North Fairy's Shrine_1452.mid           RH:14cnt  LH:alberti/80chd  G minor
+  [ 302/371]  Zelda - Majora's Mask\Song of Healing_966.mid                 RH:0cnt  LH:arpeggio/92chd  A minor
+  [ 303/371]  Zelda - Majora's Mask\Termina Field_1404.mid                  RH:0cnt  LH:arpeggio/115chd  G minor
+  [ 304/371]  Zelda - Ocarina of Time\_Kepora Gaebora's Theme__2384.mid     RH:16cnt  LH:arpeggio/80chd  D# major
+  [ 305/371]  Zelda - Ocarina of Time\Bolero of Fire_1395.mid               RH:7cnt  LH:empty/0chd  D minor
+  [ 306/371]  Zelda - Ocarina of Time\Epona's Song_1406.mid                 RH:3cnt  LH:empty/0chd  A major
+  [ 307/371]  Zelda - Ocarina of Time\Gannondorf's theme_1357.mid           RH:30cnt  LH:single_note/0chd  C major
+  [ 308/371]  Zelda - Ocarina of Time\Gerudo Theme_1327.mid                 vide
+  [ 309/371]  Zelda - Ocarina of Time\Gerudo Valley's Theme (by Kyle Landr  RH:32cnt  LH:octave_bass/0chd  F# minor
+  [ 310/371]  Zelda - Ocarina of Time\Gerudo Valley, from The Hyrule Symph  RH:32cnt  LH:bass_melody/94chd  F# minor
+  [ 311/371]  Zelda - Ocarina of Time\Gerudo Valley_1157.mid                RH:9cnt  LH:block_chord/116chd  F# minor
+  [ 312/371]  Zelda - Ocarina of Time\Get Medal_4663.mid                    RH:3cnt  LH:empty/0chd  B minor
+  [ 313/371]  Zelda - Ocarina of Time\Get Medal_4664.mid                    RH:3cnt  LH:empty/0chd  B minor
+  [ 314/371]  Zelda - Ocarina of Time\Great Fairy Fountain_1109.mid         RH:16cnt  LH:empty/0chd  G minor
+  [ 315/371]  Zelda - Ocarina of Time\Great Fairy Fountain_4657.mid         RH:18cnt  LH:empty/0chd  D minor
+  [ 316/371]  Zelda - Ocarina of Time\Great Fairy's fountain_1435.mid       RH:16cnt  LH:empty/0chd  G minor
+  [ 317/371]  Zelda - Ocarina of Time\Hyrule Castle_1398.mid                RH:23cnt  LH:empty/0chd  D major
+  [ 318/371]  Zelda - Ocarina of Time\Kokiri Forest_4658.mid                RH:29cnt  LH:empty/0chd  C major
+  [ 319/371]  Zelda - Ocarina of Time\Lost Woods Theme_1488.mid             RH:31cnt  LH:arpeggio/38chd  A minor
+  [ 320/371]  Zelda - Ocarina of Time\Lost woods_1419.mid                   RH:18cnt  LH:empty/0chd  C major
+  [ 321/371]  Zelda - Ocarina of Time\Main Theme_1313.mid                   RH:29cnt  LH:arpeggio/81chd  G minor
+  [ 322/371]  Zelda - Ocarina of Time\Market_1403.mid                       RH:31cnt  LH:empty/0chd  D major
+  [ 323/371]  Zelda - Ocarina of Time\Mini Game_1688.mid                    RH:32cnt  LH:single_note/0chd  D# major
+  [ 324/371]  Zelda - Ocarina of Time\Minuet of Forest_1920.mid             RH:6cnt  LH:octave_bass/4chd  E major
+  [ 325/371]  Zelda - Ocarina of Time\Minute of Forest_1396.mid             RH:5cnt  LH:empty/0chd  D major
+  [ 326/371]  Zelda - Ocarina of Time\Nocturne of Shadow_1397.mid           RH:7cnt  LH:empty/0chd  F major
+  [ 327/371]  Zelda - Ocarina of Time\Requiem of Spirit_1392.mid            RH:10cnt  LH:empty/0chd  D minor
+  [ 328/371]  Zelda - Ocarina of Time\Saria's Song_1391.mid                 RH:15cnt  LH:empty/0chd  E minor
+  [ 329/371]  Zelda - Ocarina of Time\Saria's Song_2335.mid                 RH:32cnt  LH:arpeggio/84chd  C major
+  [ 330/371]  Zelda - Ocarina of Time\Saria's Song_968.mid                  RH:23cnt  LH:octave_bass/22chd  E minor
+  [ 331/371]  Zelda - Ocarina of Time\Sarias Song_Lost Woods_4739.mid       RH:31cnt  LH:block_chord/107chd  C major
+  [ 332/371]  Zelda - Ocarina of Time\Serenade of Water_1394.mid            RH:5cnt  LH:empty/0chd  D major
+  [ 333/371]  Zelda - Ocarina of Time\Song of Storms_3094.mid               RH:16cnt  LH:empty/0chd  D minor
+  [ 334/371]  Zelda - Ocarina of Time\Song of Storms_5216.mid               RH:15cnt  LH:bass_melody/37chd  D minor
+  [ 335/371]  Zelda - Ocarina of Time\Song of Time_1405.mid                 RH:2cnt  LH:empty/0chd  D major
+  [ 336/371]  Zelda - Ocarina of Time\Sun's Song_1410.mid                   RH:3cnt  LH:empty/0chd  G major
+  [ 337/371]  Zelda - Ocarina of Time\Title Screen_4666.mid                 RH:26cnt  LH:empty/0chd  G major
+  [ 338/371]  Zelda - Ocarina of Time\Title Theme_1871.mid                  RH:24cnt  LH:block_chord/122chd  E minor
+  [ 339/371]  Zelda - Ocarina of Time\Zelda Medley_1233.mid                 RH:16cnt  LH:arpeggio/90chd  D minor
+  [ 340/371]  Zelda - Ocarina of Time\Zelda's Lullaby_1399.mid              RH:18cnt  LH:empty/0chd  G major
+  [ 341/371]  Zelda - Ocarina of Time\Zelda's Lullaby_967.mid               RH:18cnt  LH:arpeggio/38chd  G major
+  [ 342/371]  Zelda - Skyward Sword\Ballad of the Goddess_2354.mid          RH:31cnt  LH:bass_melody/0chd  D minor
+  [ 343/371]  Zelda - Skyward Sword\Ballad of the Goddess_2356.mid          RH:31cnt  LH:bass_melody/0chd  D minor
+  [ 344/371]  Zelda - Skyward Sword\Ballad of the Goddess_2358.mid          RH:31cnt  LH:bass_melody/0chd  D minor
+  [ 345/371]  Zelda - Skyward Sword\Romance_2545.mid                        RH:31cnt  LH:arpeggio/11chd  D major
+  [ 346/371]  Zelda - Skyward Sword\Zelda's Lullaby_4299.mid                RH:22cnt  LH:block_chord/113chd  G major
+  [ 347/371]  Zelda - Spirit Tracks\Castle Town_1631.mid                    RH:31cnt  LH:empty/0chd  C minor
+  [ 348/371]  Zelda - Spirit Tracks\Full Steam Ahead_3412.mid               RH:28cnt  LH:bass_melody/11chd  B minor
+  [ 349/371]  Zelda - Spirit Tracks\Sacred Duet_1718.mid                    RH:4cnt  LH:bass_melody/8chd  F# minor
+  [ 350/371]  Zelda - Spirit Tracks\Tower Of Spirits_1610.mid               RH:0cnt  LH:arpeggio/111chd  C major
+  [ 351/371]  Zelda - the Wind Waker\Aryll's Rescue 1_2749.mid              RH:8cnt  LH:empty/0chd  B major
+  [ 352/371]  Zelda - the Wind Waker\Earth God's Lyric_3029.mid             RH:6cnt  LH:arpeggio/26chd  D major
+  [ 353/371]  Zelda - the Wind Waker\the Wind Waker theme song_2376.mid     RH:24cnt  LH:empty/0chd  D# major
+  [ 354/371]  Zelda - the Wind Waker\Wind God's Aria_3028.mid               RH:12cnt  LH:octave_bass/9chd  D major
+  [ 355/371]  Zelda - Twilight Princess\Argorok Second Time_2295.mid        RH:0cnt  LH:block_chord/127chd  A minor
+  [ 356/371]  Zelda - Twilight Princess\Faron Woods_4662.mid                RH:27cnt  LH:empty/0chd  G# minor
+  [ 357/371]  Zelda - Twilight Princess\Hidden Village_2298.mid             RH:32cnt  LH:empty/0chd  B minor
+  [ 358/371]  Zelda - Twilight Princess\Hylianische Steppe Theme_1423.mid   RH:31cnt  LH:alberti/0chd  D major
+  [ 359/371]  Zelda - Twilight Princess\Hyrule Field_3492.mid               RH:22cnt  LH:block_chord/128chd  D major
+  [ 360/371]  Zelda - Twilight Princess\Inside a House_1987.mid             RH:3cnt  LH:bass_melody/54chd  F minor
+  [ 361/371]  Zelda - Twilight Princess\Kakariko Village_1554.mid           RH:19cnt  LH:arpeggio/116chd  F# minor
+  [ 362/371]  Zelda - Twilight Princess\midna's desperate hour_2308.mid     RH:22cnt  LH:arpeggio/84chd  A minor
+  [ 363/371]  Zelda - Twilight Princess\Ordon Village_1114.mid              RH:28cnt  LH:bass_melody/27chd  G major
+  [ 364/371]  Zelda - Twilight Princess\Ordon Village_1896.mid              RH:29cnt  LH:empty/0chd  G major
+  [ 365/371]  Zelda - Twilight Princess\Our Children Taken_3349.mid         RH:32cnt  LH:empty/0chd  A minor
+  [ 366/371]  Zelda - Twilight Princess\Sanctuary Forest_2296.mid           RH:17cnt  LH:bass_melody/116chd  A minor
+  [ 367/371]  Zelda - Twilight Princess\Trailer_1159.mid                    RH:32cnt  LH:alberti/61chd  G major
+  [ 368/371]  Zelda - Twilight Princess\Village kokoriko_2299.mid           RH:28cnt  LH:arpeggio/116chd  F# minor
+  [ 369/371]  Zelda II_The Adventure of Link\Palace Music_3239.mid          RH:29cnt  LH:octave_bass/0chd  A minor
+  [ 370/371]  Zelda- Skyward Sword\Din's Power_3041.mid                     RH:8cnt  LH:empty/0chd  E major
+  [ 371/371]  Zelda- Skyward Sword\Skyloft_4676.mid                         RH:26cnt  LH:empty/0chd  D major
+
+  Analyses   : 370/371
+  Erreurs    : 0
+
+  Contours RH  : 8760 total, 1586 uniques
+  Rythmes RH   : 8410 total, 1049 uniques
+  Rythmes LH   : 6531 total, 665 uniques
+  Accords LH   : 14118 total, 61 uniques
+  Prog. accords: 5932 total, 1440 uniques
+
+  Styles main gauche :
+    arpeggio           #########  (88)
+    empty              #########  (87)
+    block_chord        #######  (73)
+    bass_melody        ####  (37)
+    single_note        ###  (34)
+    octave_bass        ###  (32)
+    alberti            ##  (19)
+
+  K-means contours RH (k=8)ÔÇª
+  K-means rythmes RH (k=8)ÔÇª
+  K-means rythmes LH (k=8)ÔÇª
+
+----------------------------------------------------------------
+  TOP 8 CONTOURS M├ëLODIE (main droite)
+----------------------------------------------------------------
+  4 3 1 1  [descent]  ├ù4
+  1 1 1 1  [rise]  ├ù52
+  2 1 5 4  [zigzag-up]  ├ù0
+  4 3 2 4  [valley]  ├ù2
+  4 3 4 1  [wave]  ├ù0
+  1 5 4 4  [wave]  ├ù2
+  5 5 5 5  [rise]  ├ù96
+  1 1 1 5  [rise]  ├ù7
+
+----------------------------------------------------------------
+  TOP 8 RYTHMES (main droite)
+----------------------------------------------------------------
+  0x5555  x.x.x.x.x.x.x.x.  dense  ├ù919
+  0x1111  x...x...x...x...  quarter notes  ├ù535
+  0x0999  x..xx..xx..x....  light syncopation  ├ù0
+  0x1001  x...........x...  mixed  ├ù212
+  0xFFFF  xxxxxxxxxxxxxxxx  very dense  ├ù214
+  0x0155  x.x.x.x.x.......  shuffle  ├ù106
+  0x7FFF  xxxxxxxxxxxxxxx.  very dense  ├ù92
+  0x1501  x.......x.x.x...  mixed  ├ù38
+
+----------------------------------------------------------------
+  TOP 8 RYTHMES (main gauche)
+----------------------------------------------------------------
+  0x1055  x.x.x.x.....x...  shuffle  ├ù53
+  0x1111  x...x...x...x...  quarter notes  ├ù466
+  0x7FFF  xxxxxxxxxxxxxxx.  very dense  ├ù82
+  0x051F  xxxxx...x.x.....  shuffle  ├ù0
+  0x5555  x.x.x.x.x.x.x.x.  dense  ├ù1388
+  0x7575  x.x.xxx.x.x.xxx.  dense  ├ù18
+  0x4145  x.x...x.x.....x.  offbeat  ├ù1
+  0x1511  x...x...x.x.x...  quarter notes  ├ù19
+
+----------------------------------------------------------------
+  TOP VOICINGS ACCORDS (main gauche)
+----------------------------------------------------------------
+  R+3rd                     ├ù2650
+  R+5th                     ├ù2416
+  R+3rd+5th                 ├ù1765
+  R+4th                     ├ù1070
+  R+6th                     ├ù954
+  R+3rd+6th                 ├ù581
+  R+4th+6th                 ├ù505
+  R+7th                     ├ù492
+  R+2nd                     ├ù486
+  R+5th+7th                 ├ù332
+
+----------------------------------------------------------------
+  TOP 10 ORIGINALIT├ë M├ëLODIE (main droite)
+----------------------------------------------------------------
+  Kingdom Hearts               / Kingdom Hearts Medley         orig=0.963  [1 5 6 3]
+  Final Fantasy XV             / Sorrow Without Solace         orig=0.959  [1 5 2 3]
+  Final Fantasy VIII           / Don't be Afraid (Battle Them  orig=0.959  [5 1 2 3]
+  Kingdom Hearts               / Hikari - Simple and Clean     orig=0.959  [5 1 2 3]
+  Kingdom Hearts II            / Reviving Hollow Bastion       orig=0.959  [5 1 2 3]
+  Final Fantasy XV             / Melancholia                   orig=0.958  [1 6 5 3]
+  Zelda - Spirit Tracks        / Full Steam Ahead              orig=0.958  [1 6 5 3]
+  Final Fantasy XV             / Love Lost                     orig=0.958  [6 1 2 3]
+  Final Fantasy VII-Crisis Cor / Why_ -Better Version          orig=0.958  [6 1 5 4]
+  Zelda - the Wind Waker       / Wind God's Aria               orig=0.957  [4 1 6 5]
+
+  Rapport JSON     : C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\patterns\ichigos_report.json
+  Header C++       : C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\patterns\ichigos_patterns.h
+  Resume texte     : C:\Users\dossa\OneDrive\Desktop\Midnight-1\ml_training\data\patterns\ichigos_summary.txt
+

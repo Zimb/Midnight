@@ -1,0 +1,275 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+generate_seeds_h.py
+====================
+Combine tous les contours et rythmes uniques de ichigos_report.json et
+report.json en un seul header C++ seeds.h utilisable comme seeds de
+generation.
+
+Format de sortie :
+  namespace seeds {
+    struct Contour { uint8_t deg[4]; int count; };
+    struct Rhythm  { uint16_t grid;  int count; };
+    static const Contour rh_contours[] = { ... };  // tries par count desc
+    static const Rhythm  rh_rhythms[]  = { ... };
+    static const Rhythm  lh_rhythms[]  = { ... };
+  }
+"""
+
+import json, sys, io
+from pathlib import Path
+
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+
+BASE             = Path(__file__).parent / "data" / "patterns"
+OUT_CONTOURS     = BASE / "seeds.h"
+OUT_RHYTHMS      = BASE / "seeds_rhythm.h"
+OUT_PROGRESSIONS = BASE / "seeds_progression.h"
+OUT_FULL         = BASE / "seeds_full.h"
+
+
+def load_counts(path: Path, key: str) -> list[tuple[tuple, int]]:
+    """Retourne liste de (tuple, count) tries par count desc."""
+    data = json.loads(path.read_text(encoding="utf-8"))
+    raw  = data.get(key, [])
+    return [(tuple(c), n) for c, n in raw]
+
+
+def rhythm_as_uint16(r: tuple) -> int:
+    val = 0
+    for i, b in enumerate(r[:16]):
+        if b:
+            val |= (1 << (15 - i))
+    return val
+
+
+def merge(a: list[tuple[tuple, int]], b: list[tuple[tuple, int]]) -> list[tuple[tuple, int]]:
+    m: dict[tuple, int] = {}
+    for c, n in a:
+        m[c] = m.get(c, 0) + n
+    for c, n in b:
+        m[c] = m.get(c, 0) + n
+    return sorted(m.items(), key=lambda x: -x[1])
+
+
+def fmt_contour(c: tuple, count: int) -> str:
+    degs = ", ".join(str(d) for d in c)
+    return f"    {{{{{degs}}}, {count}}},"
+
+
+def fmt_rhythm(r: tuple, count: int) -> str:
+    return f"    {{0x{rhythm_as_uint16(r):04X}, {count}}},"
+
+
+def fmt_progression(p: tuple, count: int) -> str:
+    degs = ", ".join(str(d) for d in p)
+    return f"    {{{{{degs}}}, {count}}},"
+
+
+def mode_tag(contour: tuple,
+             major_counts: dict[tuple, int],
+             minor_counts: dict[tuple, int]) -> int:
+    """0=major, 1=minor, 2=ambiguous (compte similaire dans les deux)."""
+    maj = major_counts.get(contour, 0)
+    min_ = minor_counts.get(contour, 0)
+    if maj == 0 and min_ == 0:
+        return 2
+    total = maj + min_
+    ratio = maj / total
+    if ratio >= 0.65:
+        return 0   # major
+    if ratio <= 0.35:
+        return 1   # minor
+    return 2       # ambiguous
+
+
+def main() -> None:
+    ichigos_path = BASE / "ichigos_report.json"
+    vgmidi_path  = BASE / "report.json"
+
+    if not ichigos_path.exists():
+        sys.exit(f"[ERROR] Manque {ichigos_path}")
+    if not vgmidi_path.exists():
+        sys.exit(f"[ERROR] Manque {vgmidi_path}")
+
+    # --- contours RH ---
+    contours = merge(
+        load_counts(ichigos_path, "all_rh_contour_counts"),
+        load_counts(vgmidi_path,  "all_contour_counts"),
+    )
+
+    # --- rythmes RH : ichigos + vgmidi fusionnes ---
+    rh_rhythms = merge(
+        load_counts(ichigos_path, "all_rh_rhythm_counts"),
+        load_counts(vgmidi_path,  "all_rhythm_counts"),
+    )
+
+    # --- rythmes LH : ichigos seulement ---
+    lh_rhythms = load_counts(ichigos_path, "all_lh_rhythm_counts")
+    lh_rhythms.sort(key=lambda x: -x[1])
+
+    # --- progressions LH : ichigos seulement ---
+    lh_progs = load_counts(ichigos_path, "all_lh_prog_counts")
+    lh_progs.sort(key=lambda x: -x[1])
+
+    # --- mode-split pour seeds_full.h ---
+    ichigos_data = json.loads(ichigos_path.read_text(encoding="utf-8"))
+    contour_major = {tuple(c): n for c, n in ichigos_data.get("all_rh_contour_counts_major", [])}
+    contour_minor = {tuple(c): n for c, n in ichigos_data.get("all_rh_contour_counts_minor", [])}
+    prog_major    = {tuple(p): n for p, n in ichigos_data.get("all_lh_prog_counts_major", [])}
+    prog_minor    = {tuple(p): n for p, n in ichigos_data.get("all_lh_prog_counts_minor", [])}
+    has_mode_split = bool(contour_major or contour_minor)
+
+    print(f"Contours RH : {len(contours)} uniques, {sum(n for _,n in contours)} occurrences")
+    print(f"Rythmes  RH : {len(rh_rhythms)} uniques, {sum(n for _,n in rh_rhythms)} occurrences")
+    print(f"Rythmes  LH : {len(lh_rhythms)} uniques, {sum(n for _,n in lh_rhythms)} occurrences")
+    print(f"Progs    LH : {len(lh_progs)} uniques, {sum(n for _,n in lh_progs)} occurrences")
+    if has_mode_split:
+        print(f"  (mode-split: {len(contour_major)} contours major, {len(contour_minor)} minor)")
+        print(f"  (mode-split: {len(prog_major)} progs major, {len(prog_minor)} minor)")
+
+    # --- seeds.h : contours uniquement (inchange si deja present) ---
+    if OUT_CONTOURS.exists():
+        print(f"[SKIP] {OUT_CONTOURS} existe deja, pas ecrase")
+    else:
+        lines_c: list[str] = [
+            "// seeds.h -- generated by generate_seeds_h.py",
+            "// Corpus: 575 MIDIs (371 ichigos + 204 VGMidi)",
+            "// degres diatoniques : 0=racine 1=2nde 2=3rce 3=4te 4=5te 5=6te 6=7eme",
+            "#pragma once",
+            "#include <cstdint>",
+            "",
+            "namespace seeds {",
+            "",
+            "struct Contour { uint8_t deg[4]; int count; };",
+            "",
+            f"// {len(contours)} contours melodiques RH, tries par frequence",
+            "static const Contour rh_contours[] = {",
+        ]
+        for c, n in contours:
+            lines_c.append(fmt_contour(c, n))
+        lines_c += [
+            "};",
+            f"static constexpr int RH_CONTOUR_COUNT = {len(contours)};",
+            "",
+            "}  // namespace seeds",
+            "",
+        ]
+        OUT_CONTOURS.parent.mkdir(parents=True, exist_ok=True)
+        OUT_CONTOURS.write_text("\n".join(lines_c), encoding="utf-8")
+        print(f"[OK] {OUT_CONTOURS}")
+
+    # --- seeds_rhythm.h : rythmes RH + LH ---
+    lines_r: list[str] = [
+        "// seeds_rhythm.h -- generated by generate_seeds_h.py",
+        "// Corpus: 575 MIDIs (371 ichigos + 204 VGMidi)",
+        "// rythmes : grille 16 slots binaires, bit 15 = premier temps",
+        "#pragma once",
+        "#include <cstdint>",
+        "",
+        "namespace seeds {",
+        "",
+        "struct Rhythm  { uint16_t grid;  int count; };",
+        "",
+        f"// {len(rh_rhythms)} rythmes main droite, tries par frequence",
+        "static const Rhythm rh_rhythms[] = {",
+    ]
+    for r, n in rh_rhythms:
+        lines_r.append(fmt_rhythm(r, n))
+    lines_r += [
+        "};",
+        f"static constexpr int RH_RHYTHM_COUNT = {len(rh_rhythms)};",
+        "",
+        f"// {len(lh_rhythms)} rythmes main gauche, tries par frequence",
+        "static const Rhythm lh_rhythms[] = {",
+    ]
+    for r, n in lh_rhythms:
+        lines_r.append(fmt_rhythm(r, n))
+    lines_r += [
+        "};",
+        f"static constexpr int LH_RHYTHM_COUNT = {len(lh_rhythms)};",
+        "",
+        "}  // namespace seeds",
+        "",
+    ]
+    OUT_RHYTHMS.parent.mkdir(parents=True, exist_ok=True)
+    OUT_RHYTHMS.write_text("\n".join(lines_r), encoding="utf-8")
+    print(f"[OK] {OUT_RHYTHMS}")
+
+    # --- seeds_progression.h : progressions d'accords LH triees par frequence ---
+    lines_p: list[str] = [
+        "// seeds_progression.h -- generated by generate_seeds_h.py",
+        "// Corpus: 371 MIDIs ichigos (FF, Zelda, KH, Chrono)",
+        "// progression : 4 degres diatoniques de racines sur 4 mesures",
+        "// degres : 0=I  1=II  2=III  3=IV  4=V  5=VI  6=VII",
+        "// tries par frequence decroissante (plus populaire = seed faible)",
+        "#pragma once",
+        "#include <cstdint>",
+        "",
+        "namespace seeds {",
+        "",
+        "struct Progression { uint8_t root[4]; int count; };",
+        "",
+        f"// {len(lh_progs)} progressions d'accords LH uniques",
+        "static const Progression lh_progressions[] = {",
+    ]
+    for p, n in lh_progs:
+        lines_p.append(fmt_progression(p, n))
+    lines_p += [
+        "};",
+        f"static constexpr int LH_PROGRESSION_COUNT = {len(lh_progs)};",
+        "",
+        "}  // namespace seeds",
+        "",
+    ]
+    OUT_PROGRESSIONS.write_text("\n".join(lines_p), encoding="utf-8")
+    print(f"[OK] {OUT_PROGRESSIONS}")
+
+    # --- seeds_full.h : contours avec mode tag, tries par frequence ---
+    # Mode 0=major, 1=minor, 2=ambiguous
+    # Necessite que analyze_ichigos.py ait tourne avec le mode-split
+    lines_f: list[str] = [
+        "// seeds_full.h -- generated by generate_seeds_h.py",
+        "// Corpus: 575 MIDIs (371 ichigos + 204 VGMidi)",
+        "//",
+        "// Contours melodiques RH avec contexte modal.",
+        "// mode : 0=majeur  1=mineur  2=ambivalent (apparait dans les deux)",
+        "// count : frequence totale dans le corpus (tous modes)",
+        "// tries par frequence decroissante",
+        "#pragma once",
+        "#include <cstdint>",
+        "",
+        "namespace seeds {",
+        "",
+        "struct FullContour {",
+        "    uint8_t deg[4];   // degres diatoniques (0=racine .. 6=7eme)",
+        "    uint8_t mode;     // 0=major 1=minor 2=ambiguous",
+        "    int     count;    // frequence corpus",
+        "};",
+        "",
+        f"// {len(contours)} contours avec mode, tries par frequence",
+        "static const FullContour rh_contours_full[] = {",
+    ]
+
+    for c, n in contours:
+        m = mode_tag(c, contour_major, contour_minor) if has_mode_split else 2
+        degs = ", ".join(str(d) for d in c)
+        lines_f.append(f"    {{{{{degs}}}, {m}, {n}}},")
+
+    lines_f += [
+        "};",
+        f"static constexpr int RH_FULL_COUNT = {len(contours)};",
+        "",
+        "}  // namespace seeds",
+        "",
+    ]
+    OUT_FULL.write_text("\n".join(lines_f), encoding="utf-8")
+    if has_mode_split:
+        print(f"[OK] {OUT_FULL}  (avec mode-split)")
+    else:
+        print(f"[OK] {OUT_FULL}  (mode=2 ambiguous partout — relancer analyze_ichigos pour le mode-split)")
+
+
+if __name__ == "__main__":
+    main()

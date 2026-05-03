@@ -9,7 +9,7 @@ target_link_libraries(melody_maker_clap PRIVATE clap)
 # A .clap file is just a shared library renamed.
 set_target_properties(melody_maker_clap PROPERTIES
     PREFIX ""
-    OUTPUT_NAME "MidnightMelodyMaker"
+    OUTPUT_NAME "MidnightMelodyMaker(beta)"
     SUFFIX ".clap"
     POSITION_INDEPENDENT_CODE ON
 )
@@ -40,7 +40,7 @@ add_custom_target(install_user_clap
 )
 
 # ── VST3 ──────────────────────────────────────────────────────────────────────
-set(_vst3_name "MidnightMelodyMaker")
+set(_vst3_name "MidnightMelodyMaker(beta)")
 
 # vstsinglecomponenteffect.cpp ships with the SDK but isn't included in the
 # default `sdk` static library, so we add it directly to our target.
@@ -70,6 +70,17 @@ if(MSVC)
     target_compile_options(midnight_melody_vst3 PRIVATE /utf-8)
 endif()
 
+# Prevent windows.h from defining min/max macros (breaks std::min/max/clamp).
+# Must be a compile definition so it is set BEFORE any header is processed,
+# regardless of include order in the translation unit.
+if(WIN32)
+    target_compile_definitions(midnight_melody_vst3 PRIVATE
+        NOMINMAX
+        WIN32_LEAN_AND_MEAN
+        _CRT_SECURE_NO_WARNINGS
+    )
+endif()
+
 if(WIN32)
     # Assemble the VST3 bundle directory next to the build output.
     set(_vst3_bundle "${CMAKE_BINARY_DIR}/VST3/${_vst3_name}.vst3")
@@ -84,6 +95,11 @@ if(WIN32)
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "${CMAKE_SOURCE_DIR}/../soundfonts/GeneralUser GS 1.472/GeneralUser GS v1.472.sf2"
             "${_vst3_bundle}/Contents/Resources/GeneralUser.sf2"
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+            "${_vst3_bundle}/Contents/Resources/Midnight"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_SOURCE_DIR}/../soundfonts/midnight_lofi.sf2"
+            "${_vst3_bundle}/Contents/Resources/Midnight/midnight_lofi.sf2"
         COMMENT "Assembling VST3 bundle → ${_vst3_bundle}"
     )
 

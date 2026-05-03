@@ -1,0 +1,103 @@
+============================================================
+  MIDI Pattern Learner â€” RÃ©sumÃ© d'analyse
+============================================================
+
+  Corpus total     : 204 morceaux
+  Focus (FF/Zelda) : 81 morceaux
+  Contours total   : 2706
+  Contours uniques : 950
+  Entropie focus   : 2.708 bits
+  Entropie corpus  : 2.710 bits
+  (max thÃ©orique 7 degrÃ©s = 2.807 bits)
+
+------------------------------------------------------------
+  Top 6 contours appris
+  (remplacement direct du plugin, voicesForStyle style==0)
+------------------------------------------------------------
+  [0] [1, 1, 4, 4]  rise          2nd â†’ 2nd â†’ 5th â†’ 5th  (0Ã—)
+  [1] [1, 5, 4, 4]  wave          2nd â†’ 6th â†’ 5th â†’ 5th  (0Ã—)
+  [2] [5, 4, 5, 4]  wave          6th â†’ 5th â†’ 6th â†’ 5th  (1Ã—)
+  [3] [1, 1, 1, 1]  rise          2nd â†’ 2nd â†’ 2nd â†’ 2nd  (21Ã—)
+  [4] [4, 4, 2, 1]  descent       5th â†’ 5th â†’ 3rd â†’ 2nd  (3Ã—)
+  [5] [4, 1, 1, 3]  valley        5th â†’ 2nd â†’ 2nd â†’ 4th  (0Ã—)
+
+------------------------------------------------------------
+  RÃ©partition instruments
+------------------------------------------------------------
+  piano           â–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆ (204)
+
+------------------------------------------------------------
+  Top 20 patterns les plus originaux (focus)
+------------------------------------------------------------
+  0.959  [piano        conf=100%]  Final Fantasy: Mining Town  â†’ [6, 3, 1, 5]
+  0.959  [piano        conf=100%]  Final Fantasy: One Winged Angel Reborn Arrang  â†’ [3, 1, 6, 5]
+  0.958  [piano        conf=100%]  The Legend of Zelda: Lost Woods  â†’ [1, 5, 3, 6]
+  0.956  [piano        conf=100%]  Chrono: Silent Light  â†’ [5, 3, 1, 4]
+  0.955  [piano        conf=100%]  Chrono: 600 AD  â†’ [5, 3, 2, 6]
+  0.954  [piano        conf=100%]  The Legend of Zelda: Ganondorf  â†’ [3, 5, 4, 6]
+  0.953  [piano        conf=100%]  Final Fantasy: Anxious Heart  â†’ [5, 3, 4, 6]
+  0.953  [piano        conf=100%]  Final Fantasy: Costa Del Sol  â†’ [5, 2, 6, 1]
+  0.952  [piano        conf=100%]  Final Fantasy: Jenova Absolute  â†’ [2, 1, 3, 6]
+  0.951  [piano        conf=100%]  The Legend of Zelda: Sarias Song  â†’ [4, 1, 2, 3]
+  0.951  [piano        conf=100%]  Final Fantasy: Battle Theme  â†’ [1, 5, 6, 2]
+  0.951  [piano        conf=100%]  Final Fantasy: Mark of the Traitor  â†’ [4, 3, 2, 1]
+  0.950  [piano        conf=100%]  Final Fantasy: Holding My Thoughts in My Hear  â†’ [6, 3, 4, 5]
+  0.949  [piano        conf=100%]  The Legend of Zelda: Deku Palace  â†’ [1, 3, 5, 4]
+  0.949  [piano        conf=100%]  Final Fantasy: Main Theme  â†’ [1, 4, 3, 5]
+  0.948  [piano        conf=100%]  The Legend of Zelda: Temple of Time  â†’ [2, 3, 1, 4]
+  0.947  [piano        conf=100%]  The Legend of Zelda: Medley of Time  â†’ [5, 2, 4, 1]
+  0.946  [piano        conf=100%]  Final Fantasy: Descendent of Shinobi  â†’ [2, 6, 1, 4]
+  0.946  [piano        conf=100%]  Final Fantasy: Electric de Chocobo  â†’ [2, 5, 4, 1]
+  0.945  [piano        conf=100%]  Final Fantasy: Aeriths Theme  â†’ [5, 0, 6, 1]
+
+------------------------------------------------------------
+  Top rythmes appris (K-means)
+------------------------------------------------------------
+  [0] 0x5555  x.x.x.x.x.x.x.x.  dense  (265x)
+  [1] 0x1155  x.x.x.x.x...x...  quarter notes  (23x)
+  [2] 0x007F  xxxxxxx.........  light syncopation  (1x)
+  [3] 0x1101  x.......x...x...  mixed  (40x)
+  [4] 0x5440  ......x...x.x.x.  offbeat  (0x)
+  [5] 0x1111  x...x...x...x...  quarter notes  (186x)
+  [6] 0x5F9D  x.xxx..xxxxxx.x.  syncopated  (0x)
+  [7] 0x7FFF  xxxxxxxxxxxxxxx.  very dense  (45x)
+
+------------------------------------------------------------
+  Top 10 rythmes originaux (focus)
+------------------------------------------------------------
+  0.852  Chrono: Chrono Trigger                  .xxxxxxxxxxxxxxx
+  0.847  Final Fantasy: Battle Theme                    xxxxxxxx.xxxxxxx
+  0.844  Chrono: Secret of the Forest            xxxxxxxxxxxxxxxx
+  0.844  Final Fantasy: One Winged Angel                xxxxxxxxxxxxxxxx
+  0.844  The Legend of Zelda: Chase Theme                     xxxxxxxxxxxxxxxx
+  0.844  Final Fantasy: Jenova Absolute                 xxxx.xxxxxxxxxxx
+  0.808  Final Fantasy: One Winged Angel Reborn Arrang  xxxxxxxxxxxxxxx.
+  0.808  The Legend of Zelda: Alien Invasion                  xxxxxxxxxxxxxxx.
+  0.754  The Legend of Zelda: Gerudo Valley                   .xxx.x.x.xxxx...
+  0.733  Final Fantasy: Mining Town                     .....xxxxxxxx.xx
+
+------------------------------------------------------------
+  Patterns d'accords main gauche (top 15)
+------------------------------------------------------------
+   184Ã—  [0, 2]  (R + 3rd)
+   154Ã—  [0, 4]  (R + 5th)
+    98Ã—  [0, 2, 4]  (R + 3rd + 5th)
+    72Ã—  [0, 3]  (R + 4th)
+    71Ã—  [0, 3, 5]  (R + 4th + 6th)
+    56Ã—  [0, 6]  (R + 7th)
+    55Ã—  [0, 5]  (R + 6th)
+    36Ã—  [0, 1, 4]  (R + 2nd + 5th)
+    34Ã—  [0, 4, 6]  (R + 5th + 7th)
+    33Ã—  [0, 2, 6]  (R + 3rd + 7th)
+    19Ã—  [0, 1, 4, 5]  (R + 2nd + 5th + 6th)
+    13Ã—  [0, 2, 5]  (R + 3rd + 6th)
+    10Ã—  [0, 3, 6]  (R + 4th + 7th)
+     7Ã—  [0, 1]  (R + 2nd)
+     7Ã—  [0, 2, 4, 5]  (R + 3rd + 5th + 6th)
+
+------------------------------------------------------------
+  Instruments par jeu
+------------------------------------------------------------
+  Chrono                pianoÃ—9
+  Final Fantasy         pianoÃ—42
+  The Legend of Zelda   pianoÃ—30
