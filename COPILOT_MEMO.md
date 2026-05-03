@@ -251,7 +251,115 @@ Si une méthode **inline** dans la classe référence des membres déclarés plu
 
 ---
 
-## 8. Points en suspens / À faire
+## 8. Fonctionnalités existantes (inventaire complet)
+
+### 8.1 Architecture audio/MIDI
+- **6 sorties stéréo VST3** indépendantes : Melodie / Arpege / Basse / Percu. / Contre / Piano
+- Chaque style → son propre bus (`outBuses[st]`). FL Studio reçoit bien `numOutputs=6` avec buffers valides (confirmé par log).
+- **1 entrée MIDI** (déclenchement par notes entrantes — `hasTrigger()`)
+- **Sortie MIDI** : EXPORT SESSION → MIDI (format 1, multi-track, une track par style)
+- **Export WAV** : bouton "EXPORT AUDIO → WAV" dans l'UI
+
+### 8.2 6 Styles musicaux
+Chaque style = onglet (tab) avec ses propres paramètres indépendants.
+
+| Idx | Nom | Type de synthèse Maker |
+|-----|-----|------------------------|
+| 0 | Mélodie | Additive FM pad/voice |
+| 1 | Arpège | Karplus-Strong harp |
+| 2 | Basse | FM bass |
+| 3 | Percu. | FM percussion |
+| 4 | Contrechant | FM organ |
+| 5 | Piano | Échantillon direct |
+
+### 8.3 Paramètres musicaux (par style, via `kParamXxx`)
+- **Tonalité** (Key) : 12 notes chromatiques
+- **Mode** : 27 gammes/modes disponibles (`kModeNames[]`)
+- **Octave** : registre
+- **Subdivision** : durée de base des notes
+- **Densité** : probabilité de jouer une note
+- **Seed** : graine aléatoire (bouton 🎲 Dice pour randomiser)
+- **Durée de note** (NoteLen)
+
+### 8.4 Paramètres par style (persistés dans getState/setState)
+| Paramètre | Champ | Défaut |
+|-----------|-------|--------|
+| Volume SF2 | `sfVolumePerStyle[6]` | 0.85 (0..1.5) |
+| Humanize | `humanizePerStyle[6]` | 0.0 (timing jitter) |
+| Retard | `retardPerStyle[6]` | 0.0 (groove lag) |
+| Mute | `muteStyles` (bitmask) | 0 (aucun muté) |
+| Solo | `soloStyles` (bitmask) | 0 (aucun solo) |
+| Lock Mode | `lockModePerStyle[6]` | true |
+| Lock Progression | `lockProgPerStyle[6]` | true |
+| Lock Subdiv | `lockSubdivPerStyle[6]` | true |
+| JAM mode | `jamPerStyle[6]` | false |
+| Start Bar | `startBarPerStyle[6]` | 0 (délai démarrage) |
+| Piano Mélodie | `pianoMelPerStyle[6]` | true |
+| Piano Accords | `pianoChordPerStyle[6]` | true |
+
+### 8.5 Boutons M / S sur chaque onglet de style
+- **M** (Mute) : bouton rouge sur chaque tab → `toggleMute(i)` → bit dans `muteStyles`
+- **S** (Solo) : bouton jaune sur chaque tab → `toggleSolo(i)` → exclusif (désactive les autres solos)
+- Logique : si `soloStyles != 0`, seuls les styles dont le bit est actif jouent
+- Rendu : `tabMuteRects[i]` / `tabSoloRects[i]` dans `WM_PAINT` des tabs
+
+### 8.6 Progression harmonique
+- 27 progressions prédéfinies (`kProgressionNames[]`, `kProgressions[27][12]`)
+- Verrou 🔒 sur Mode, Progression, Subdiv (les synchronise entre styles)
+- **AUTO-KEY** : écoute le MIDI entrant pour détecter la tonalité automatiquement
+
+### 8.7 Onglet MAKER (SoundFont)
+**Mode SF2 procédural** (`kIdMakerEnable`) :
+- Synthèse au choix : Additive, FM, Karplus-Strong, selon le style
+- Paramètres ADSR, ModIndex/ModDecay, Gain, plage de notes, pas d'échantillonnage
+- Bouton GÉNÉRER → recharge `sfSynth[style]` avec le nouveau SF2
+
+**Mode SF2 externe** (`kIdMakerLoadSf2`) :
+- Charge un `.sf2` externe via dialogue fichier
+- Sélection du preset (bank/program) via combo
+- 12 sliders de delta SF2 (ajustements en mémoire sans toucher le fichier) :
+  - Accordage coarse (±24 st), Accordage fin (±99 ct)
+  - Attaque / Déclin / Sustain / Relâchement (enveloppe volume)
+  - Volume (atténuation ±500 cb)
+  - Filtre Fc (±6000 ct), Filtre Q (±500 cb)
+  - Panoramique (±500)
+  - Réverb. send (±500), Chorus send (±500)
+- Labels **valeurs absolues** (base + delta) dans `refreshDeltaLabels()`
+- `sf2BaseGensPerStyle[6]` : snapshot des gens de base à la lecture du SF2
+
+### 8.8 FX par style (`fxChainPerStyle[6]`)
+Appliqué après le rendu TSF, avant écriture dans le bus de sortie.
+| FX | IDs |
+|----|-----|
+| Chorus | kIdFxChorusOn/Rate/Depth/Mix (1050-1053) |
+| Delay | kIdFxDelayOn/Time/Fb/Mix (1054-1057) |
+| Reverb | kIdFxReverbOn/Size/Damp/Mix (1058-1061) |
+| Cassette Noise | kIdFxNoiseOn/Level/Flutter/Tone (1062-1065) |
+
+### 8.9 Section / arrangement
+- **Sections** : Intro / Verse / Pre-chorus / Chorus / Bridge / Outro (sélecteur global `kIdSection`)
+- **Mesure** : signature temporelle (numérateur combo `kIdMeter`)
+- **Start Bar** par style : délai de démarrage (style démarre après N barres)
+
+### 8.10 Piano roll
+- Visualisation Synthesia (X=pitch, Y=temps, barre de piano en bas)
+- Notes de toutes les voix actives
+- Clic sur la barre de piano → joue une note de preview
+
+### 8.11 Preset
+- **SAVE PRESET** → fichier `.mmp` (sérialisation complète via `getState`)
+- **LOAD PRESET** → restauration complète via `setState`
+- **FILE** dropdown → accès aux options fichier
+
+### 8.12 TinySoundFont (TSF)
+- 6 instances `sfSynth[0..5]`, une par style (indépendantes)
+- Canal MIDI : identique au style (ch=st)
+- Volume par canal : `tsf_channel_set_volume(t, ch, sfVolumePerStyle[st])`
+- Rendu interleaved float → split L/R dans `sfBuf`
+
+---
+
+## 10. Points en suspens / À faire
 
 - [x] **Découpe plugin_vst3.cpp** → plugin_vst3.h + view.cpp + ui_constants.h + knob.h + logger.h ✅
 - [x] **Build vérifié après découpe** — Build succeeded ✅
@@ -265,7 +373,7 @@ Si une méthode **inline** dans la classe référence des membres déclarés plu
 
 ---
 
-## 8. Workflow de débogage type
+## 11. Workflow de débogage type
 
 1. Lancer le build et filtrer les erreurs :
    ```powershell
@@ -288,7 +396,7 @@ Si une méthode **inline** dans la classe référence des membres déclarés plu
 
 ---
 
-## 9. Le problème VS Code ↔ disque
+## 12. Le problème VS Code ↔ disque
 
 **Phénomène** : Quand un fichier est modifié via PowerShell (hors VS Code), VS Code peut :
 - Afficher l'ancienne version dans l'éditeur

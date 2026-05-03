@@ -1,4 +1,4 @@
-#include "plugin_vst3.h"
+﻿#include "plugin_vst3.h"
 #include "knob.h"
 
 class MelodyMakerView : public IPlugView
@@ -114,6 +114,8 @@ private:
     HWND hProgCombo               = nullptr;
     HWND hAutoBtn                 = nullptr; // JAM toggle
     HWND hDiceBtn                 = nullptr; // Randomize seed
+    HWND hRefreshBtn              = nullptr; // Circular arrow refresh button
+    HWND hOwnSf2Btn               = nullptr; // Header: Own-SF2 status indicator
     HWND hPianoMelChk             = nullptr; // Piano: "MÃ©lodie" toggle
     HWND hPianoChordChk           = nullptr; // Piano: "Accords" toggle
     HWND hPercRhyLabel            = nullptr;
@@ -193,14 +195,40 @@ private:
     // Éditeur SF2 externe — boutons + sliders delta
     HWND hMakerLoadSf2Btn     = nullptr;
     HWND hMakerClearSf2Btn    = nullptr;
+    HWND hMakerScrollBar      = nullptr; // scrollbar vertical pour les delta SF2
+    int  makerScrollY         = 0;       // décalage vertical actuel (px)
     HWND hMakerSf2Label       = nullptr; // nom du fichier chargé
-    HWND hMakerDeltaTuneSlider= nullptr; HWND hMakerDeltaTuneVal = nullptr;
-    HWND hMakerDeltaAtkSlider = nullptr; HWND hMakerDeltaAtkVal  = nullptr;
-    HWND hMakerDeltaDecSlider = nullptr; HWND hMakerDeltaDecVal  = nullptr;
-    HWND hMakerDeltaSusSlider = nullptr; HWND hMakerDeltaSusVal  = nullptr;
-    HWND hMakerDeltaRelSlider = nullptr; HWND hMakerDeltaRelVal  = nullptr;
-    HWND hMakerDeltaVolSlider = nullptr; HWND hMakerDeltaVolVal  = nullptr;
-    HWND hMakerDeltaFiltSlider= nullptr; HWND hMakerDeltaFiltVal = nullptr;
+    HWND hMakerDeltaTuneSlider    = nullptr; HWND hMakerDeltaTuneVal     = nullptr;
+    HWND hMakerDeltaFineTuneSlider= nullptr; HWND hMakerDeltaFineTuneVal = nullptr;
+    HWND hMakerDeltaScaleSlider   = nullptr; HWND hMakerDeltaScaleVal    = nullptr;
+    HWND hMakerDeltaDelayVolSlider= nullptr; HWND hMakerDeltaDelayVolVal = nullptr;
+    HWND hMakerDeltaAtkSlider     = nullptr; HWND hMakerDeltaAtkVal      = nullptr;
+    HWND hMakerDeltaHoldVolSlider = nullptr; HWND hMakerDeltaHoldVolVal  = nullptr;
+    HWND hMakerDeltaDecSlider     = nullptr; HWND hMakerDeltaDecVal      = nullptr;
+    HWND hMakerDeltaSusSlider     = nullptr; HWND hMakerDeltaSusVal      = nullptr;
+    HWND hMakerDeltaRelSlider     = nullptr; HWND hMakerDeltaRelVal      = nullptr;
+    HWND hMakerDeltaDelayModSlider= nullptr; HWND hMakerDeltaDelayModVal = nullptr;
+    HWND hMakerDeltaAtkModSlider  = nullptr; HWND hMakerDeltaAtkModVal   = nullptr;
+    HWND hMakerDeltaHoldModSlider = nullptr; HWND hMakerDeltaHoldModVal  = nullptr;
+    HWND hMakerDeltaDecModSlider  = nullptr; HWND hMakerDeltaDecModVal   = nullptr;
+    HWND hMakerDeltaSusModSlider  = nullptr; HWND hMakerDeltaSusModVal   = nullptr;
+    HWND hMakerDeltaRelModSlider  = nullptr; HWND hMakerDeltaRelModVal   = nullptr;
+    HWND hMakerDeltaModEnvPitchSlider = nullptr; HWND hMakerDeltaModEnvPitchVal = nullptr;
+    HWND hMakerDeltaModEnvFiltSlider  = nullptr; HWND hMakerDeltaModEnvFiltVal  = nullptr;
+    HWND hMakerDeltaModLfoDlySlider   = nullptr; HWND hMakerDeltaModLfoDlyVal   = nullptr;
+    HWND hMakerDeltaModLfoFqSlider    = nullptr; HWND hMakerDeltaModLfoFqVal    = nullptr;
+    HWND hMakerDeltaModLfoPitchSlider = nullptr; HWND hMakerDeltaModLfoPitchVal = nullptr;
+    HWND hMakerDeltaModLfoFiltSlider  = nullptr; HWND hMakerDeltaModLfoFiltVal  = nullptr;
+    HWND hMakerDeltaModLfoVolSlider   = nullptr; HWND hMakerDeltaModLfoVolVal   = nullptr;
+    HWND hMakerDeltaVibLfoDlySlider   = nullptr; HWND hMakerDeltaVibLfoDlyVal   = nullptr;
+    HWND hMakerDeltaVibLfoFqSlider    = nullptr; HWND hMakerDeltaVibLfoFqVal    = nullptr;
+    HWND hMakerDeltaVibLfoPitchSlider = nullptr; HWND hMakerDeltaVibLfoPitchVal = nullptr;
+    HWND hMakerDeltaVolSlider     = nullptr; HWND hMakerDeltaVolVal      = nullptr;
+    HWND hMakerDeltaPanSlider     = nullptr; HWND hMakerDeltaPanVal      = nullptr;
+    HWND hMakerDeltaFiltSlider    = nullptr; HWND hMakerDeltaFiltVal     = nullptr;
+    HWND hMakerDeltaQSlider       = nullptr; HWND hMakerDeltaQVal        = nullptr;
+    HWND hMakerDeltaReverbSlider  = nullptr; HWND hMakerDeltaReverbVal   = nullptr;
+    HWND hMakerDeltaChorusSlider  = nullptr; HWND hMakerDeltaChorusVal   = nullptr;
     // Per-style working configuration for the Maker editor
     sfm::SfmConfig makerCfg[kTabCount]    = {};
     bool           makerEnabled[kTabCount] = {};
@@ -208,6 +236,7 @@ private:
     UINT_PTR       makerTimerId = 0;             // WM_TIMER id for auto-refresh
     // Y positions of Maker section dividers (set in applyVisibilityForStyle)
     int mkEnvY = 0, mkTimbreY = 0, mkTessY = 0;
+    int mkDeltaAccordY = 0, mkDeltaEnvY = 0, mkDeltaDynY = 0, mkDeltaFiltY = 0, mkDeltaFxY = 0;
     // Y positions of each Maker row (for label drawing in paintBackground)
     // 0=Nom, 1=Synth, 2=Attaque, 3=Déclin, 4=Maintien, 5=Relâchement,
     // 6=ProfondeurFM, 7=DéclinFM, 8=Gain, 9=Tessiture
@@ -675,6 +704,7 @@ private:
     void setViewMode(int m) {
         if (m == viewMode) return;
         viewMode = m;
+        if (m != 2) { makerScrollY = 0; if (hMakerScrollBar) ShowWindow(hMakerScrollBar, SW_HIDE); }
         applyVisibilityForStyle(plugin ? plugin->getStyleType() : 0);
         InvalidateRect(hWnd, nullptr, TRUE);
         if (hPianoRoll) InvalidateRect(hPianoRoll, nullptr, FALSE);
@@ -840,6 +870,24 @@ private:
                     InvalidateRect(hMakerEnable, nullptr, TRUE);
                     return 0;
                 }
+                if (id == kIdRefresh && code == BN_CLICKED && plugin) {
+                    int st = plugin->getStyleType();
+                    if (!plugin->externalSf2PerStyle[st].empty()) {
+                        // External SF2: commit current delta knobs and reload
+                        KillTimer(hWnd, 1202);
+                        commitDeltaAndReload(st);
+                    } else {
+                        // Procedural maker: regenerate
+                        loadMakerCfgFromControls(st);
+                        makerEnabled[st] = true;
+                        makerDirty[st]   = false;
+                        if (hMakerEnable) SetWindowTextW(hMakerEnable, L"\u25cf OUI");
+                        plugin->createOrUpdateUserSf(makerCfg[st], st);
+                        plugin->reloadLiveSf(st, makerCfg[st]);
+                        populateInstrumentCombo(st);
+                    }
+                    return 0;
+                }
                 if (id == kIdMakerGenerate && code == BN_CLICKED) {
                     if (!plugin) return 0;
                     int st = plugin->getStyleType();
@@ -880,21 +928,51 @@ private:
                             plugin->externalSf2PathPerStyle[st] = path;
                             // Réinitialiser delta à 0 lors d'un nouveau chargement
                             plugin->sf2DeltaPerStyle[st] = sfed::Sf2Delta{};
+                            // Lire les valeurs absolues du premier preset pour les labels
+                            {
+                                auto presets = sfed::listPresets(plugin->externalSf2PerStyle[st]);
+                                if (!presets.empty()) {
+                                    plugin->sf2SelBankPerStyle[st] = presets[0].bank;
+                                    plugin->sf2SelProgPerStyle[st] = presets[0].program;
+                                    plugin->sf2BaseGensPerStyle[st] = sfed::readPresetGens(
+                                        plugin->externalSf2PerStyle[st], presets[0].bank, presets[0].program);
+                                } else {
+                                    plugin->sf2SelBankPerStyle[st] = 0;
+                                    plugin->sf2SelProgPerStyle[st] = 0;
+                                    plugin->sf2BaseGensPerStyle[st] = sfed::Sf2GenSnapshot{};
+                                }
+                            }
                             // Remettre sliders delta au centre
                             auto resetSlider = [&](HWND s, int centre) {
-                                if (s) SendMessageW(s, TBM_SETPOS, TRUE, centre);
+                                kwSetPos(s, centre);
                             };
                             resetSlider(hMakerDeltaTuneSlider, 24);
-                            resetSlider(hMakerDeltaAtkSlider, 50);  resetSlider(hMakerDeltaDecSlider, 50);
-                            resetSlider(hMakerDeltaSusSlider, 50);  resetSlider(hMakerDeltaRelSlider, 50);
-                            resetSlider(hMakerDeltaVolSlider, 50);  resetSlider(hMakerDeltaFiltSlider, 50);
+                            auto rs50 = [&](HWND s) { kwSetPos(s, 50); };
+                            rs50(hMakerDeltaFineTuneSlider); rs50(hMakerDeltaScaleSlider);
+                            rs50(hMakerDeltaDelayVolSlider); rs50(hMakerDeltaAtkSlider);
+                            rs50(hMakerDeltaHoldVolSlider);  rs50(hMakerDeltaDecSlider);
+                            rs50(hMakerDeltaSusSlider);      rs50(hMakerDeltaRelSlider);
+                            rs50(hMakerDeltaDelayModSlider); rs50(hMakerDeltaAtkModSlider);
+                            rs50(hMakerDeltaHoldModSlider);  rs50(hMakerDeltaDecModSlider);
+                            rs50(hMakerDeltaSusModSlider);   rs50(hMakerDeltaRelModSlider);
+                            rs50(hMakerDeltaModEnvPitchSlider); rs50(hMakerDeltaModEnvFiltSlider);
+                            rs50(hMakerDeltaModLfoDlySlider); rs50(hMakerDeltaModLfoFqSlider);
+                            rs50(hMakerDeltaModLfoPitchSlider); rs50(hMakerDeltaModLfoFiltSlider);
+                            rs50(hMakerDeltaModLfoVolSlider);
+                            rs50(hMakerDeltaVibLfoDlySlider); rs50(hMakerDeltaVibLfoFqSlider);
+                            rs50(hMakerDeltaVibLfoPitchSlider);
+                            rs50(hMakerDeltaVolSlider);      rs50(hMakerDeltaPanSlider);
+                            rs50(hMakerDeltaFiltSlider);     rs50(hMakerDeltaQSlider);
+                            rs50(hMakerDeltaReverbSlider);   rs50(hMakerDeltaChorusSlider);
                             refreshDeltaLabels();
                             // Afficher le nom court
                             std::wstring shortName = sfed::sf2ShortName(path);
                             if (hMakerSf2Label) SetWindowTextW(hMakerSf2Label, shortName.c_str());
                             // Charger immédiatement
                             plugin->reloadExternalSf(st);
-                            showExternalSf2Controls(true);
+                            populateInstrumentCombo(st);
+                            // Re-layout Maker view to hide synthesis controls
+                            applyVisibilityForStyle(st);
                         } else {
                             MessageBoxW(hWnd, L"Impossible de lire ce fichier SF2.",
                                         L"Erreur", MB_OK | MB_ICONWARNING);
@@ -911,6 +989,10 @@ private:
                     showExternalSf2Controls(false);
                     // Revenir au SF2 généré si Maker est actif
                     if (makerEnabled[st]) plugin->reloadLiveSf(st, makerCfg[st]);
+                    // Recharger la liste d'instruments (catalogue statique)
+                    populateInstrumentCombo(st);
+                    // Re-layout Maker view to show synthesis controls again
+                    applyVisibilityForStyle(st);
                     return 0;
                 }
                 // ---- FX toggles ----
@@ -949,6 +1031,85 @@ private:
                     InvalidateRect(hAutoBtn, nullptr, TRUE);
                     return 0;
                 }
+                if (id == kIdOwnSf2Btn && code == BN_CLICKED && plugin) {
+                    int st = plugin->getStyleType();
+                    bool hasSf2 = !plugin->externalSf2PerStyle[st].empty();
+                    if (!hasSf2) {
+                        // OFF → ON : charger un SF2 personnalisé
+                        std::wstring path = sfed::browseSf2File(hWnd);
+                        if (!path.empty()) {
+                            std::vector<uint8_t> bytes = sfed::loadSf2File(path.c_str());
+                            if (!bytes.empty()) {
+                                plugin->externalSf2PerStyle[st] = std::move(bytes);
+                                plugin->externalSf2PathPerStyle[st] = path;
+                                plugin->sf2DeltaPerStyle[st] = sfed::Sf2Delta{};
+                                // 1. Charger dans TSF d'abord — c'est lui qui valide le SF2.
+                                //    reloadExternalSf() peuple aussi tsfPresetsPerStyle[st],
+                                //    snapshot de f->presets[], garanti cohérent avec l'audio.
+                                plugin->reloadExternalSf(st);
+                                // 2. Lire bank/program depuis le snapshot TSF (pas sfed::listPresets)
+                                {
+                                    const auto& presets = plugin->tsfPresetsPerStyle[st];
+                                    if (!presets.empty()) {
+                                        plugin->sf2SelBankPerStyle[st]  = (uint16_t)presets[0].bank;
+                                        plugin->sf2SelProgPerStyle[st]  = (uint16_t)presets[0].program;
+                                        plugin->sf2BaseGensPerStyle[st] = sfed::readPresetGens(
+                                            plugin->externalSf2PerStyle[st],
+                                            (uint16_t)presets[0].bank, (uint16_t)presets[0].program);
+                                    } else {
+                                        // TSF n'a trouvé aucun preset → SF2 inutilisable
+                                        plugin->externalSf2PerStyle[st].clear();
+                                        plugin->externalSf2PathPerStyle[st].clear();
+                                        plugin->sf2DeltaPerStyle[st] = sfed::Sf2Delta{};
+                                        MessageBoxW(hWnd,
+                                            L"Ce fichier SF2 ne contient aucun preset reconnu.",
+                                            L"SF2 invalide", MB_OK | MB_ICONWARNING);
+                                        return 0;
+                                    }
+                                }
+                                // 3. Remettre les sliders delta à zéro
+                                auto rs50 = [&](HWND s) { kwSetPos(s, 50); };
+                                kwSetPos(hMakerDeltaTuneSlider, 24);
+                                rs50(hMakerDeltaFineTuneSlider); rs50(hMakerDeltaScaleSlider);
+                                rs50(hMakerDeltaDelayVolSlider); rs50(hMakerDeltaAtkSlider);
+                                rs50(hMakerDeltaHoldVolSlider);  rs50(hMakerDeltaDecSlider);
+                                rs50(hMakerDeltaSusSlider);      rs50(hMakerDeltaRelSlider);
+                                rs50(hMakerDeltaDelayModSlider); rs50(hMakerDeltaAtkModSlider);
+                                rs50(hMakerDeltaHoldModSlider);  rs50(hMakerDeltaDecModSlider);
+                                rs50(hMakerDeltaSusModSlider);   rs50(hMakerDeltaRelModSlider);
+                                rs50(hMakerDeltaModEnvPitchSlider); rs50(hMakerDeltaModEnvFiltSlider);
+                                rs50(hMakerDeltaModLfoDlySlider); rs50(hMakerDeltaModLfoFqSlider);
+                                rs50(hMakerDeltaModLfoPitchSlider); rs50(hMakerDeltaModLfoFiltSlider);
+                                rs50(hMakerDeltaModLfoVolSlider);
+                                rs50(hMakerDeltaVibLfoDlySlider); rs50(hMakerDeltaVibLfoFqSlider);
+                                rs50(hMakerDeltaVibLfoPitchSlider);
+                                rs50(hMakerDeltaVolSlider);      rs50(hMakerDeltaPanSlider);
+                                rs50(hMakerDeltaFiltSlider);     rs50(hMakerDeltaQSlider);
+                                rs50(hMakerDeltaReverbSlider);   rs50(hMakerDeltaChorusSlider);
+                                refreshDeltaLabels();
+                                std::wstring shortName = sfed::sf2ShortName(path);
+                                if (hMakerSf2Label) SetWindowTextW(hMakerSf2Label, shortName.c_str());
+                                // 4. Remplir la liste puis relayer la vue
+                                populateInstrumentCombo(st);
+                                applyVisibilityForStyle(st);
+                            } else {
+                                MessageBoxW(hWnd, L"Impossible de lire ce fichier SF2.",
+                                            L"Erreur", MB_OK | MB_ICONWARNING);
+                            }
+                        }
+                    } else {
+                        // ON → OFF : effacer le SF2 personnalisé
+                        plugin->externalSf2PerStyle[st].clear();
+                        plugin->externalSf2PathPerStyle[st].clear();
+                        plugin->sf2DeltaPerStyle[st] = sfed::Sf2Delta{};
+                        if (hMakerSf2Label) SetWindowTextW(hMakerSf2Label, L"(aucun SF2 chargé)");
+                        showExternalSf2Controls(false);
+                        if (makerEnabled[st]) plugin->reloadLiveSf(st, makerCfg[st]);
+                        populateInstrumentCombo(st);
+                        applyVisibilityForStyle(st);
+                    }
+                    return 0;
+                }
                 if (id == kIdDice && code == BN_CLICKED) {
                     plugin->randomizeSeed();
                     refreshOne(mm::kParamSeed);
@@ -977,8 +1138,24 @@ private:
                     int sel = (int)SendMessageW(hWaveCombo, CB_GETCURSEL, 0, 0);
                     if (sel != CB_ERR) {
                         int st = plugin->getStyleType();
-                        plugin->setSfPreset(st, sel);
-                        plugin->setWaveType(sel); // keep legacy state happy
+                        if (!plugin->externalSf2PerStyle[st].empty()) {
+                            // sel == index direct dans tsfPresetsPerStyle (même ordre que le combo)
+                            const auto& presets = plugin->tsfPresetsPerStyle[st];
+                            if (sel < (int)presets.size()) {
+                                plugin->sf2SelBankPerStyle[st]  = (uint16_t)presets[sel].bank;
+                                plugin->sf2SelProgPerStyle[st]  = (uint16_t)presets[sel].program;
+                                plugin->sf2BaseGensPerStyle[st] = sfed::readPresetGens(
+                                    plugin->externalSf2PerStyle[st],
+                                    (uint16_t)presets[sel].bank, (uint16_t)presets[sel].program);
+                                refreshDeltaLabels();
+                                KillTimer(hWnd, 1202);
+                                SetTimer(hWnd, 1202, 400, nullptr);
+                            }
+                        } else {
+                            // Built-in presets
+                            plugin->setSfPreset(st, sel);
+                            plugin->setWaveType(sel);
+                        }
                     }
                     return 0;
                 }
@@ -1086,14 +1263,15 @@ private:
                     if (plugin) makerDirty[plugin->getStyleType()] = true;
                     return 0;
                 }
-                // ---- Sliders delta SF2 externe ----
-                if (id >= kIdMakerDeltaTune && id <= kIdMakerDeltaFilt) {
+                // ---- Sliders delta SF2 externe (viewMode==2 only, IDs overlap with FX) ----
+                if (viewMode == 2 &&
+                    ((id >= kIdMakerDeltaTune && id <= kIdMakerDeltaFilt) ||
+                     (id >= kIdMakerDeltaFineTune && id <= kIdMakerDeltaVibLfoPitch))) {
                     if (plugin) {
-                        int st = plugin->getStyleType();
-                        if (!plugin->externalSf2PerStyle[st].empty())
-                            commitDeltaAndReload(st);
-                        else
-                            refreshDeltaLabels();
+                        refreshDeltaLabels();
+                        // Debounce: only reload SF2 after 400ms of inactivity
+                        KillTimer(hWnd, 1202);
+                        SetTimer(hWnd, 1202, 400, nullptr);
                     }
                     return 0;
                 }
@@ -1101,6 +1279,50 @@ private:
                 if (id >= kIdFxChorusRate && id <= kIdFxNoiseTone) {
                     refreshFxLabels();
                     if (plugin) commitFxFromControls(plugin->getStyleType());
+                    return 0;
+                }
+                break;
+            }
+            case WM_VSCROLL: {
+                // Scrollbar vertical de la section delta SF2 (Maker tab)
+                if ((HWND)l == hMakerScrollBar && hMakerScrollBar) {
+                    SCROLLINFO si{}; si.cbSize = sizeof(si); si.fMask = SIF_ALL;
+                    GetScrollInfo(hMakerScrollBar, SB_CTL, &si);
+                    int oldPos = si.nPos;
+                    switch (LOWORD(w)) {
+                        case SB_LINEUP:     si.nPos -= 15; break;
+                        case SB_LINEDOWN:   si.nPos += 15; break;
+                        case SB_PAGEUP:     si.nPos -= (int)si.nPage; break;
+                        case SB_PAGEDOWN:   si.nPos += (int)si.nPage; break;
+                        case SB_THUMBTRACK: si.nPos = (int)HIWORD(w); break;
+                        case SB_THUMBPOSITION: si.nPos = (int)HIWORD(w); break;
+                        default: break;
+                    }
+                    int maxPos = (int)(si.nMax - si.nPage + 1);
+                    si.nPos = (std::max)(0, (std::min)(si.nPos, maxPos));
+                    if (si.nPos != oldPos) {
+                        makerScrollY = si.nPos;
+                        si.fMask = SIF_POS;
+                        SetScrollInfo(hMakerScrollBar, SB_CTL, &si, TRUE);
+                        applyVisibilityForStyle(plugin ? plugin->getStyleType() : 0);
+                    }
+                }
+                return 0;
+            }
+            case WM_MOUSEWHEEL: {
+                if (viewMode == 2 && hMakerScrollBar && IsWindowVisible(hMakerScrollBar)) {
+                    SCROLLINFO si{}; si.cbSize = sizeof(si); si.fMask = SIF_ALL;
+                    GetScrollInfo(hMakerScrollBar, SB_CTL, &si);
+                    int delta = GET_WHEEL_DELTA_WPARAM(w);
+                    si.nPos -= (delta / WHEEL_DELTA) * 30;
+                    int maxPos = (int)(si.nMax - si.nPage + 1);
+                    si.nPos = (std::max)(0, (std::min)(si.nPos, maxPos));
+                    if (si.nPos != makerScrollY) {
+                        makerScrollY = si.nPos;
+                        si.fMask = SIF_POS;
+                        SetScrollInfo(hMakerScrollBar, SB_CTL, &si, TRUE);
+                        applyVisibilityForStyle(plugin ? plugin->getStyleType() : 0);
+                    }
                     return 0;
                 }
                 break;
@@ -1160,6 +1382,13 @@ private:
                     } else if (hPianoRoll) {
                         InvalidateRect(hPianoRoll, nullptr, FALSE);
                     }
+                }
+                // ---- Delta SF2 debounce timer (id 1202): reload after 400ms idle ----
+                if (w == 1202 && plugin && viewMode == 2) {
+                    KillTimer(hWnd, 1202);
+                    int st = plugin->getStyleType();
+                    if (!plugin->externalSf2PerStyle[st].empty())
+                        commitDeltaAndReload(st);
                 }
                 // ---- Maker auto-refresh timer (id 1201) ----
                 if (w == 1201 && plugin && viewMode == 2) {
@@ -1393,6 +1622,58 @@ private:
                     drawListenButton(dis);
                     return TRUE;
                 }
+                if (dis->CtlID == (UINT)kIdMakerEnable) {
+                    // Draw like the JAM button but reflects makerEnabled state
+                    RECT rc = dis->rcItem;
+                    int st = plugin ? plugin->getStyleType() : 0;
+                    bool on = makerEnabled[st];
+                    bool pressed = (dis->itemState & ODS_SELECTED) != 0;
+                    COLORREF fill = on
+                        ? (pressed ? kColAccentDark : kColAccent)
+                        : (pressed ? kColControlHi  : kColControl);
+                    COLORREF edge = on ? kColAccent : kColTextDim;
+                    COLORREF txtC = on ? kColWhite  : kColText;
+                    HBRUSH br = CreateSolidBrush(fill);
+                    HPEN   pn = CreatePen(PS_SOLID, 1, edge);
+                    HBRUSH brOld = (HBRUSH)SelectObject(dis->hDC, br);
+                    HPEN   pnOld = (HPEN)SelectObject(dis->hDC, pn);
+                    RoundRect(dis->hDC, rc.left, rc.top, rc.right, rc.bottom, 10, 10);
+                    SelectObject(dis->hDC, brOld); SelectObject(dis->hDC, pnOld);
+                    DeleteObject(br); DeleteObject(pn);
+                    wchar_t txt[64]; int len = GetWindowTextW(dis->hwndItem, txt, 64);
+                    SetBkMode(dis->hDC, TRANSPARENT);
+                    SetTextColor(dis->hDC, txtC);
+                    HFONT old = (HFONT)SelectObject(dis->hDC, fontBold);
+                    DrawTextW(dis->hDC, txt, len, &rc, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+                    SelectObject(dis->hDC, old);
+                    return TRUE;
+                }
+                if (dis->CtlID == (UINT)kIdOwnSf2Btn) {
+                    // Draw like JAM button but reflects own-SF2 state for this style
+                    RECT rc = dis->rcItem;
+                    int st = plugin ? plugin->getStyleType() : 0;
+                    bool on = plugin && !plugin->externalSf2PerStyle[st].empty();
+                    bool pressed = (dis->itemState & ODS_SELECTED) != 0;
+                    COLORREF fill = on
+                        ? (pressed ? kColAccentDark : kColAccent)
+                        : (pressed ? kColControlHi  : kColControl);
+                    COLORREF edge = on ? kColAccent : kColTextDim;
+                    COLORREF txtC = on ? kColWhite  : kColText;
+                    HBRUSH br = CreateSolidBrush(fill);
+                    HPEN   pn = CreatePen(PS_SOLID, 1, edge);
+                    HBRUSH brOld = (HBRUSH)SelectObject(dis->hDC, br);
+                    HPEN   pnOld = (HPEN)SelectObject(dis->hDC, pn);
+                    RoundRect(dis->hDC, rc.left, rc.top, rc.right, rc.bottom, 10, 10);
+                    SelectObject(dis->hDC, brOld); SelectObject(dis->hDC, pnOld);
+                    DeleteObject(br); DeleteObject(pn);
+                    const wchar_t* txt = on ? L"SF2  \u25CF  ON" : L"SF2  \u25CB  OFF";
+                    SetBkMode(dis->hDC, TRANSPARENT);
+                    SetTextColor(dis->hDC, txtC);
+                    HFONT old = (HFONT)SelectObject(dis->hDC, fontBold);
+                    DrawTextW(dis->hDC, txt, -1, &rc, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+                    SelectObject(dis->hDC, old);
+                    return TRUE;
+                }
                 if (dis->CtlID == (UINT)kIdDice) {
                     drawDiceButton(dis);
                     return TRUE;
@@ -1567,12 +1848,6 @@ private:
                 SetTextColor(hdc, kColWhite);
                 RECT rcInstr = { kPadX, yTop, kViewWidth / 2, yTop + 36 };
                 DrawTextW(hdc, hdr, -1, &rcInstr, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
-
-                // "SoundFont Personnel ?" label before the button
-                SelectObject(hdc, fontReg);
-                SetTextColor(hdc, RGB(180, 200, 220));
-                RECT rcQ = { kViewWidth / 2, yTop, kViewWidth - kPadX - 114, yTop + 36 };
-                DrawTextW(hdc, L"SoundFont personnel ?", -1, &rcQ, DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
             }
 
             // Section dividers (ENVELOPPE / TIMBRE / TESSITURE)
@@ -1592,27 +1867,57 @@ private:
             }
             SelectObject(hdc, penMkOld); DeleteObject(penMk);
 
-            // Row labels (drawn here since STATIC controls can't theme easily)
+            // Row labels for non-knob rows (Nom, Synthèse)
             const MkStyleDef& mkDef = kMkStyle[mkStyle];
-            const wchar_t* kMkRowLabels[] = {
-                L"Nom du preset :",
-                L"Type de synth\u00e8se :",
-                L"Attaque :",
-                L"D\u00e9clin :",
-                L"Maintien :",
-                L"Rel\u00e2chement :",
-                mkDef.miLabel,
-                mkDef.mdLabel,
-                L"Gain :",
-                nullptr, // Tessiture row uses separate combos sub-labels
-            };
             SelectObject(hdc, fontReg);
             SetTextColor(hdc, kColText);
-            for (int i = 0; i < 9; ++i) {
-                int ry = mkRowY[i];
-                if (ry <= 0) continue;
-                RECT rcL = { kPadX, ry, kPadX + 150, ry + 24 };
-                DrawTextW(hdc, kMkRowLabels[i], -1, &rcL, DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
+            // Row 0: Nom du preset
+            if (mkRowY[0] > 0) {
+                RECT rcL = { kPadX, mkRowY[0], kPadX + 150, mkRowY[0] + 24 };
+                DrawTextW(hdc, L"Nom du preset :", -1, &rcL, DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
+            }
+            // Row 1: Type de synthèse
+            if (mkRowY[1] > 0) {
+                RECT rcL = { kPadX, mkRowY[1], kPadX + 150, mkRowY[1] + 24 };
+                DrawTextW(hdc, L"Type de synth\u00e8se :", -1, &rcL, DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
+            }
+
+            // Knob param names drawn above each knob (Enveloppe + Timbre side-by-side)
+            if (mkEnvY > 0) {
+                const int halfW   = kViewWidth / 2 - kPadX; // ~432
+                const int halfMid = kViewWidth / 2;          // 450
+                const int envGap  = (halfW - 4 * kKnobSize) / 5;
+                const int tmbGap  = (halfW - 3 * kKnobSize) / 4;
+                const int knobY   = mkEnvY + 24;
+                const int labelY  = knobY - 17;
+
+                // Enveloppe labels
+                static const wchar_t* kEnvLabels[4] = {
+                    L"Attaque", L"D\u00e9clin", L"Maintien", L"Rel\u00e2ch."
+                };
+                int kx = kPadX + envGap;
+                for (int i = 0; i < 4; ++i) {
+                    RECT rcP = { kx, labelY, kx + kKnobSize, knobY };
+                    DrawTextW(hdc, kEnvLabels[i], -1, &rcP, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+                    kx += kKnobSize + envGap;
+                }
+
+                // Timbre labels
+                wchar_t tl0[32], tl1[32];
+                auto stripColon = [](const wchar_t* src, wchar_t* dst, int dsz) {
+                    wcsncpy_s(dst, dsz, src, _TRUNCATE);
+                    int n = (int)wcslen(dst);
+                    while (n > 0 && (dst[n-1] == L':' || dst[n-1] == L' ')) dst[--n] = 0;
+                };
+                stripColon(mkDef.miLabel, tl0, 32);
+                stripColon(mkDef.mdLabel, tl1, 32);
+                const wchar_t* kTmbLbl[3] = { tl0, tl1, L"Gain" };
+                kx = halfMid + tmbGap;
+                for (int i = 0; i < 3; ++i) {
+                    RECT rcP = { kx, labelY, kx + kKnobSize, knobY };
+                    DrawTextW(hdc, kTmbLbl[i], -1, &rcP, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+                    kx += kKnobSize + tmbGap;
+                }
             }
             // Tessiture sub-labels (inline, next to combos)
             if (mkRowY[9] > 0) {
@@ -1632,56 +1937,130 @@ private:
                 RECT rcST = { cx - lblW2 - 4, ry, cx - 4, ry + 24 };
                 DrawTextW(hdc, L"Pas :", -1, &rcST, DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
             }
+            // ---- Labels delta SF2 externe — knob column headers ----
+            if (mkDeltaAccordY > 0) {
+                const int dCols = 5;
+                const int dColW = (kViewWidth - 2 * kPadX) / dCols;
+                static const wchar_t* kColTitles[] = {
+                    L"ACCORD.", L"ENV VOL", L"ENV MOD", L"LFO", L"DYN / FX"
+                };
+                SelectObject(hdc, fontSection);
+                SetTextColor(hdc, kColAccent);
+                for (int ci = 0; ci < dCols; ++ci) {
+                    int cx = kPadX + ci * dColW;
+                    RECT rcT = { cx, mkDeltaAccordY, cx + dColW, mkDeltaAccordY + 22 };
+                    DrawTextW(hdc, kColTitles[ci], -1, &rcT, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+                }
+                // Row labels drawn above each visible knob
+                static const wchar_t* kKnobLabels[] = {
+                    // col 0: ACCORD.
+                    L"Grossier", L"Fin", L"\u00c9chelle",
+                    // col 1: ENV VOL
+                    L"D\u00e9lai", L"Attaque", L"Maintien", L"D\u00e9clin", L"Sustain", L"Rel\u00e2ch.",
+                    // col 2: ENV MOD
+                    L"D\u00e9lai", L"Attaque", L"Maintien", L"D\u00e9clin", L"Sustain", L"Rel\u00e2ch.",
+                    L"\u2192Pitch", L"\u2192Filtre",
+                    // col 3: LFO
+                    L"Dly Mod", L"Fq Mod", L"Mod\u2192Pitch", L"Mod\u2192Filt", L"Mod\u2192Vol",
+                    L"Dly Vib", L"Fq Vib", L"Vib\u2192Pitch",
+                    // col 4: DYN+FX
+                    L"Volume", L"Panoram.", L"Filtre Fc", L"Filtre Q",
+                    L"R\u00e9verb.", L"Chorus"
+                };
+                HWND kKnobHwnds[] = {
+                    hMakerDeltaTuneSlider, hMakerDeltaFineTuneSlider, hMakerDeltaScaleSlider,
+                    hMakerDeltaDelayVolSlider, hMakerDeltaAtkSlider, hMakerDeltaHoldVolSlider,
+                    hMakerDeltaDecSlider, hMakerDeltaSusSlider, hMakerDeltaRelSlider,
+                    hMakerDeltaDelayModSlider, hMakerDeltaAtkModSlider, hMakerDeltaHoldModSlider,
+                    hMakerDeltaDecModSlider, hMakerDeltaSusModSlider, hMakerDeltaRelModSlider,
+                    hMakerDeltaModEnvPitchSlider, hMakerDeltaModEnvFiltSlider,
+                    hMakerDeltaModLfoDlySlider, hMakerDeltaModLfoFqSlider,
+                    hMakerDeltaModLfoPitchSlider, hMakerDeltaModLfoFiltSlider, hMakerDeltaModLfoVolSlider,
+                    hMakerDeltaVibLfoDlySlider, hMakerDeltaVibLfoFqSlider, hMakerDeltaVibLfoPitchSlider,
+                    hMakerDeltaVolSlider, hMakerDeltaPanSlider,
+                    hMakerDeltaFiltSlider, hMakerDeltaQSlider,
+                    hMakerDeltaReverbSlider, hMakerDeltaChorusSlider
+                };
+                SelectObject(hdc, fontReg);
+                SetTextColor(hdc, kColTextDim);
+                for (int ki = 0; ki < 31; ++ki) {
+                    HWND kn = kKnobHwnds[ki];
+                    if (kn && IsWindowVisible(kn)) {
+                        RECT wr; GetWindowRect(kn, &wr);
+                        POINT pt = { wr.left, wr.top }; ScreenToClient(hWnd, &pt);
+                        RECT rcL = { pt.x - 16, pt.y - 16, pt.x + kKnobSize + 16, pt.y };
+                        DrawTextW(hdc, kKnobLabels[ki], -1, &rcL,
+                                  DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+                    }
+                }
+                // "Sélectionnez un instrument :" label above hWaveCombo
+                if (hWaveCombo && IsWindowVisible(hWaveCombo)) {
+                    RECT wr; GetWindowRect(hWaveCombo, &wr);
+                    POINT pt = { wr.left, wr.top }; ScreenToClient(hWnd, &pt);
+                    SetTextColor(hdc, kColText);
+                    SelectObject(hdc, fontBold);
+                    RECT rcI = { pt.x, pt.y - 18, pt.x + 300, pt.y };
+                    DrawTextW(hdc, L"S\u00e9lectionnez un instrument :", -1, &rcI, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+                }
+            }
         }
 
         // ---- FX panel (viewMode == 3) ----
         if (viewMode == 3) {
             SetBkMode(hdc, TRANSPARENT);
-            const int colW  = (kViewWidth - 2 * kPadX - 20) / 2;
-            const int col0X = kPadX;
-            const int col1X = kPadX + colW + 20;
-            const int lblW  = 120;
-            const int togW  = 90;
+            const int colW    = (kViewWidth - 2 * kPadX - 20) / 2;
+            const int col0X   = kPadX;
+            const int col1X   = kPadX + colW + 20;
+            const int togW    = 90;
+            const int secH    = 28;
+            const int knobGapFx = (colW - 3 * kKnobSize) / 4;
+            const int fxBlockH  = secH + kKnobSize + 18 + 4;
+            const int fxSecGap  = 18;
 
-            // Section headers
-            static const wchar_t* kFxSec[] = { L"CHORUS", L"D\u00c9LAI", L"R\u00c9VERB\u00c9RATION", L"BRUIT CASSETTE" };
-            const int kFxY[]  = { fxChorusY,   fxDelayY,   fxReverbY,   fxNoiseY  };
-            const int kFxCX[] = { col0X,        col0X,       col1X,        col1X    };
+            // Section names + param names per FX
+            static const wchar_t* kFxSec[] = {
+                L"CHORUS", L"DÉLAI", L"RÉVERBÉRATION", L"BRUIT CASSETTE"
+            };
+            // 3 param names per FX: [FX][param]
+            static const wchar_t* kFxPar[4][3] = {
+                { L"Vitesse",    L"Profondeur", L"Mixage"    },  // Chorus
+                { L"Temps",      L"Réinject.", L"Mixage" },  // Delay
+                { L"Taille",     L"Amort.",     L"Mixage"    },  // Reverb
+                { L"Niveau",     L"Flutter",    L"Couleur"   },  // Noise
+            };
+            const int kFxSY[4] = { fxChorusY, fxDelayY, fxReverbY, fxNoiseY };
+            const int kFxCX[4] = { col0X, col0X, col1X, col1X };
+
             SelectObject(hdc, fontSection);
             HPEN penFx = CreatePen(PS_SOLID, 1, kColBorder);
             HPEN penFxOld = (HPEN)SelectObject(hdc, penFx);
-            for (int i = 0; i < 4; ++i) {
-                int sy = kFxY[i]; int cx = kFxCX[i];
+
+            for (int fi = 0; fi < 4; ++fi) {
+                int sy = kFxSY[fi]; int cx = kFxCX[fi];
                 if (sy <= 0) continue;
+
+                // Section title — centered over the full column
                 SetTextColor(hdc, kColAccent);
-                RECT rcS = { cx + togW + 8, sy, cx + colW, sy + 20 };
-                DrawTextW(hdc, kFxSec[i], -1, &rcS, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
-                MoveToEx(hdc, cx + togW + 8 + 100, sy + 11, nullptr);
-                LineTo(hdc, cx + colW, sy + 11);
+                RECT rcS = { cx, sy, cx + colW, sy + secH };
+                DrawTextW(hdc, kFxSec[fi], -1, &rcS, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+                // Separator line
+                int lineX0 = cx + 10;
+                MoveToEx(hdc, lineX0, sy + secH/2, nullptr);
+                LineTo(hdc, cx + colW, sy + secH/2);
+
+                // Knob param labels (drawn above each knob)
+                SelectObject(hdc, fontReg);
+                SetTextColor(hdc, kColText);
+                int knobY = sy + secH;
+                int kx = cx + knobGapFx;
+                for (int pi = 0; pi < 3; ++pi) {
+                    RECT rcP = { kx - 22, knobY - 16, kx + kKnobSize + 22, knobY };
+                    DrawTextW(hdc, kFxPar[fi][pi], -1, &rcP, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+                    kx += kKnobSize + knobGapFx;
+                }
+                SelectObject(hdc, fontSection);
             }
             SelectObject(hdc, penFxOld); DeleteObject(penFx);
-
-            // Row labels per column
-            static const wchar_t* kFxLabC0[] = {
-                L"Vitesse :", L"Profondeur :", L"Mixage :",     // Chorus
-                L"Temps :",   L"Réinjection :", L"Mixage :"    // Delay
-            };
-            static const wchar_t* kFxLabC1[] = {
-                L"Taille :", L"Amortissement :", L"Mixage :",  // Reverb
-                L"Niveau :", L"Flutter :", L"Couleur :"        // Noise
-            };
-            SelectObject(hdc, fontReg);
-            SetTextColor(hdc, kColText);
-            for (int i = 0; i < 6; ++i) {
-                int ry = fxRowY[i]; if (ry <= 0) continue;
-                RECT rcL = { col0X, ry, col0X + lblW, ry + 24 };
-                DrawTextW(hdc, kFxLabC0[i], -1, &rcL, DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
-            }
-            for (int i = 0; i < 6; ++i) {
-                int ry = fxRowY[i + 6]; if (ry <= 0) continue;
-                RECT rcL = { col1X, ry, col1X + lblW, ry + 24 };
-                DrawTextW(hdc, kFxLabC1[i], -1, &rcL, DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
-            }
         }
 
         SelectObject(hdc, old);
@@ -2201,6 +2580,20 @@ private:
             (HMENU)(LONG_PTR)kIdDice, hi, nullptr);
         SendMessageW(hDiceBtn, WM_SETFONT, (WPARAM)fontBold, TRUE);
 
+        // ---------- Refresh button (circular arrow) shown in Maker tab top-right
+        hRefreshBtn = CreateWindowW(L"BUTTON", L"\u27F3",
+            WS_CHILD | BS_PUSHBUTTON | WS_TABSTOP,
+            0, 0, 36, 36, hWnd,
+            (HMENU)(LONG_PTR)kIdRefresh, hi, nullptr);
+        SendMessageW(hRefreshBtn, WM_SETFONT, (WPARAM)fontBold, TRUE);
+
+        // ---------- Own-SF2 header button: shows SF2 status, click→Maker tab
+        hOwnSf2Btn = CreateWindowW(L"BUTTON", L"SF2  \u25cb  OFF",
+            WS_CHILD | BS_PUSHBUTTON | BS_OWNERDRAW | WS_TABSTOP,
+            0, 0, 130, 26, hWnd,
+            (HMENU)(LONG_PTR)kIdOwnSf2Btn, hi, nullptr);
+        SendMessageW(hOwnSf2Btn, WM_SETFONT, (WPARAM)fontBold, TRUE);
+
         // ---------- Piano: "MÃ©lodie main droite" toggle (BS_AUTOCHECKBOX)
         hPianoMelChk = CreateWindowW(L"BUTTON", L"M\u00e9lodie",
             WS_CHILD | BS_AUTOCHECKBOX | WS_TABSTOP,
@@ -2367,18 +2760,17 @@ private:
         SendMessageW(hRedoBtn, WM_SETFONT, (WPARAM)fontBold, TRUE);
 
         // ---------- Maker (SoundFont Maker) controls (created hidden) ----------
-        // Helper: create a horizontal trackbar (no ticks)
-        auto mkSlider = [&](int id, int rangeMin, int rangeMax, int defVal) -> HWND {
-            HWND s = CreateWindowW(TRACKBAR_CLASS, L"",
-                WS_CHILD | TBS_HORZ | TBS_NOTICKS | WS_TABSTOP,
-                0, 0, 460, 22, hWnd, (HMENU)(LONG_PTR)id, hi, nullptr);
-            SendMessageW(s, TBM_SETRANGE, TRUE, MAKELONG(rangeMin, rangeMax));
-            SendMessageW(s, TBM_SETPOS, TRUE, defVal);
-            return s;
+        // Helper: create a knob (KnobWidget) for Maker envelope/timbre
+        auto mkKnob = [&](int id, int rangeMin, int rangeMax, int defVal) -> HWND {
+            HWND h = KnobWidget::create(hWnd, id, 0, 0, kKnobSize, kKnobSize);
+            auto* kw = reinterpret_cast<KnobWidget*>(GetWindowLongPtrW(h, GWLP_USERDATA));
+            if (kw) { kw->posMin = rangeMin; kw->posMax = rangeMax;
+                      kw->posDefault = defVal; kw->setPos(defVal); }
+            return h;
         };
         auto mkValLbl = [&]() -> HWND {
             HWND v = CreateWindowW(L"STATIC", L"",
-                WS_CHILD | SS_LEFT, 0, 0, 90, 20, hWnd, nullptr, hi, nullptr);
+                WS_CHILD | SS_CENTER, 0, 0, kKnobSize, 18, hWnd, nullptr, hi, nullptr);
             SendMessageW(v, WM_SETFONT, (WPARAM)fontBold, TRUE);
             return v;
         };
@@ -2406,8 +2798,8 @@ private:
         }
         // Enable/disable toggle button
         hMakerEnable = CreateWindowW(L"BUTTON", L"\u25cb NON",
-            WS_CHILD | BS_PUSHBUTTON | WS_TABSTOP,
-            0, 0, 110, 28, hWnd, (HMENU)(LONG_PTR)kIdMakerEnable, hi, nullptr);
+            WS_CHILD | BS_PUSHBUTTON | BS_OWNERDRAW | WS_TABSTOP,
+            0, 0, 140, 26, hWnd, (HMENU)(LONG_PTR)kIdMakerEnable, hi, nullptr);
         SendMessageW(hMakerEnable, WM_SETFONT, (WPARAM)fontBold, TRUE);
         // Name edit field
         hMakerNameEdit = CreateWindowW(L"EDIT", L"Voix FM",
@@ -2425,14 +2817,14 @@ private:
         SendMessageW(hMakerSynthCombo, CB_SETCURSEL, 0, 0);
         // Envelope sliders: Attack ×0.01→0.01..2s, Decay ×0.01→0.01..3s,
         //                   Sustain ×0.01→0..1,    Release ×0.01→0.01..4s
-        hMakerAttackSlider  = mkSlider(kIdMakerAttack,  1, 200,  1); hMakerAttackVal  = mkValLbl();
-        hMakerDecaySlider   = mkSlider(kIdMakerDecay,   1, 300, 40); hMakerDecayVal   = mkValLbl();
-        hMakerSustainSlider = mkSlider(kIdMakerSustain, 0, 100, 45); hMakerSustainVal = mkValLbl();
-        hMakerReleaseSlider = mkSlider(kIdMakerRelease, 1, 400, 60); hMakerReleaseVal = mkValLbl();
-        // Timbre sliders: ModIndex ×0.1→0..20, ModDecay ×0.1→0..30, Gain ×0.01→0.01..1
-        hMakerModIndexSlider = mkSlider(kIdMakerModIndex, 0, 200, 40); hMakerModIndexVal = mkValLbl();
-        hMakerModDecaySlider = mkSlider(kIdMakerModDecay, 0, 300, 60); hMakerModDecayVal = mkValLbl();
-        hMakerGainSlider     = mkSlider(kIdMakerGain,     1, 100, 90); hMakerGainVal     = mkValLbl();
+        hMakerAttackSlider  = mkKnob(kIdMakerAttack,  1, 200,  1); hMakerAttackVal  = mkValLbl();
+        hMakerDecaySlider   = mkKnob(kIdMakerDecay,   1, 300, 40); hMakerDecayVal   = mkValLbl();
+        hMakerSustainSlider = mkKnob(kIdMakerSustain, 0, 100, 45); hMakerSustainVal = mkValLbl();
+        hMakerReleaseSlider = mkKnob(kIdMakerRelease, 1, 400, 60); hMakerReleaseVal = mkValLbl();
+        // Timbre knobs: ModIndex ×0.1→0..20, ModDecay ×0.1→0..30, Gain ×0.01→0.01..1
+        hMakerModIndexSlider = mkKnob(kIdMakerModIndex, 0, 200, 40); hMakerModIndexVal = mkValLbl();
+        hMakerModDecaySlider = mkKnob(kIdMakerModDecay, 0, 300, 60); hMakerModDecayVal = mkValLbl();
+        hMakerGainSlider     = mkKnob(kIdMakerGain,     1, 100, 90); hMakerGainVal     = mkValLbl();
         // Tessiture combos
         hMakerLowNoteCombo = CreateWindowW(L"COMBOBOX", L"",
             WS_CHILD | CBS_DROPDOWNLIST | CBS_HASSTRINGS | WS_TABSTOP,
@@ -2472,42 +2864,98 @@ private:
             WS_CHILD | BS_PUSHBUTTON | WS_TABSTOP,
             0, 0, 90, 28, hWnd, (HMENU)(LONG_PTR)kIdMakerClearSf2, hi, nullptr);
         SendMessageW(hMakerClearSf2Btn, WM_SETFONT, (WPARAM)fontReg, TRUE);
+        hMakerScrollBar = CreateWindowW(L"SCROLLBAR", nullptr,
+            WS_CHILD | SBS_VERT,
+            kViewWidth - 16, kHeaderH + kTabsH, 16, kViewHeight - kHeaderH - kTabsH,
+            hWnd, nullptr, hi, nullptr);
         hMakerSf2Label = CreateWindowW(L"STATIC", L"(aucun SF2 chargé)",
             WS_CHILD | SS_ENDELLIPSIS,
             0, 0, 340, 18, hWnd, nullptr, hi, nullptr);
         SendMessageW(hMakerSf2Label, WM_SETFONT, (WPARAM)fontReg, TRUE);
 
-        auto mkDeltaSlider = [&](int id, int lo, int hi_, int init) -> HWND {
-            HWND s = CreateWindowW(TRACKBAR_CLASSW, L"",
-                WS_CHILD | TBS_HORZ | TBS_NOTICKS,
-                0, 0, 200, 22, hWnd, (HMENU)(LONG_PTR)id, hi, nullptr);
-            SendMessageW(s, TBM_SETRANGE, TRUE, MAKELPARAM(lo, hi_));
-            SendMessageW(s, TBM_SETPOS, TRUE, init);
-            return s;
+        auto mkDeltaKnob = [&](int id, int lo, int hi_, int init) -> HWND {
+            HWND h2 = KnobWidget::create(hWnd, id, 0, 0, kKnobSize, kKnobSize);
+            auto* kw2 = reinterpret_cast<KnobWidget*>(GetWindowLongPtrW(h2, GWLP_USERDATA));
+            if (kw2) { kw2->posMin = lo; kw2->posMax = hi_;
+                       kw2->posDefault = init; kw2->setPos(init); }
+            return h2;
         };
-        auto mkDeltaLabel = [&]() -> HWND {
+        auto mkDeltaValLbl = [&]() -> HWND {
             HWND lv = CreateWindowW(L"STATIC", L"0",
-                WS_CHILD | SS_RIGHT,
-                0, 0, 44, 18, hWnd, nullptr, hi, nullptr);
+                WS_CHILD | SS_CENTER,
+                0, 0, kKnobSize, 16, hWnd, nullptr, hi, nullptr);
             SendMessageW(lv, WM_SETFONT, (WPARAM)fontReg, TRUE);
             return lv;
         };
         // Tune: −24..+24 demi-tons, centre = 0 → slider 0..48, centre=24
-        hMakerDeltaTuneSlider = mkDeltaSlider(kIdMakerDeltaTune, 0, 48, 24);
-        hMakerDeltaTuneVal    = mkDeltaLabel();
-        // Timing sliders 0..100, centre=50 = ×1
-        hMakerDeltaAtkSlider  = mkDeltaSlider(kIdMakerDeltaAtk,  0, 100, 50);
-        hMakerDeltaAtkVal     = mkDeltaLabel();
-        hMakerDeltaDecSlider  = mkDeltaSlider(kIdMakerDeltaDec,  0, 100, 50);
-        hMakerDeltaDecVal     = mkDeltaLabel();
-        hMakerDeltaSusSlider  = mkDeltaSlider(kIdMakerDeltaSus,  0, 100, 50);
-        hMakerDeltaSusVal     = mkDeltaLabel();
-        hMakerDeltaRelSlider  = mkDeltaSlider(kIdMakerDeltaRel,  0, 100, 50);
-        hMakerDeltaRelVal     = mkDeltaLabel();
-        hMakerDeltaVolSlider  = mkDeltaSlider(kIdMakerDeltaVol,  0, 100, 50);
-        hMakerDeltaVolVal     = mkDeltaLabel();
-        hMakerDeltaFiltSlider = mkDeltaSlider(kIdMakerDeltaFilt, 0, 100, 50);
-        hMakerDeltaFiltVal    = mkDeltaLabel();
+        hMakerDeltaTuneSlider = mkDeltaKnob(kIdMakerDeltaTune, 0, 48, 24);
+        hMakerDeltaTuneVal    = mkDeltaValLbl();
+        // Fine tune / Scale : 0..100, centre=50
+        hMakerDeltaFineTuneSlider = mkDeltaKnob(kIdMakerDeltaFineTune,    0, 100, 50);
+        hMakerDeltaFineTuneVal    = mkDeltaValLbl();
+        hMakerDeltaScaleSlider    = mkDeltaKnob(kIdMakerDeltaScale,       0, 100, 50);
+        hMakerDeltaScaleVal       = mkDeltaValLbl();
+        // Vol envelope: delay, attack, hold, decay, sustain, release
+        hMakerDeltaDelayVolSlider = mkDeltaKnob(kIdMakerDeltaDelayVol,    0, 100, 50);
+        hMakerDeltaDelayVolVal    = mkDeltaValLbl();
+        hMakerDeltaAtkSlider      = mkDeltaKnob(kIdMakerDeltaAtk,         0, 100, 50);
+        hMakerDeltaAtkVal         = mkDeltaValLbl();
+        hMakerDeltaHoldVolSlider  = mkDeltaKnob(kIdMakerDeltaHoldVol,     0, 100, 50);
+        hMakerDeltaHoldVolVal     = mkDeltaValLbl();
+        hMakerDeltaDecSlider      = mkDeltaKnob(kIdMakerDeltaDec,         0, 100, 50);
+        hMakerDeltaDecVal         = mkDeltaValLbl();
+        hMakerDeltaSusSlider      = mkDeltaKnob(kIdMakerDeltaSus,         0, 100, 50);
+        hMakerDeltaSusVal         = mkDeltaValLbl();
+        hMakerDeltaRelSlider      = mkDeltaKnob(kIdMakerDeltaRel,         0, 100, 50);
+        hMakerDeltaRelVal         = mkDeltaValLbl();
+        // Mod envelope: delay, attack, hold, decay, sustain, release, →pitch, →filter
+        hMakerDeltaDelayModSlider  = mkDeltaKnob(kIdMakerDeltaDelayMod,   0, 100, 50);
+        hMakerDeltaDelayModVal     = mkDeltaValLbl();
+        hMakerDeltaAtkModSlider    = mkDeltaKnob(kIdMakerDeltaAtkMod,     0, 100, 50);
+        hMakerDeltaAtkModVal       = mkDeltaValLbl();
+        hMakerDeltaHoldModSlider   = mkDeltaKnob(kIdMakerDeltaHoldMod,    0, 100, 50);
+        hMakerDeltaHoldModVal      = mkDeltaValLbl();
+        hMakerDeltaDecModSlider    = mkDeltaKnob(kIdMakerDeltaDecMod,     0, 100, 50);
+        hMakerDeltaDecModVal       = mkDeltaValLbl();
+        hMakerDeltaSusModSlider    = mkDeltaKnob(kIdMakerDeltaSusMod,     0, 100, 50);
+        hMakerDeltaSusModVal       = mkDeltaValLbl();
+        hMakerDeltaRelModSlider    = mkDeltaKnob(kIdMakerDeltaRelMod,     0, 100, 50);
+        hMakerDeltaRelModVal       = mkDeltaValLbl();
+        hMakerDeltaModEnvPitchSlider = mkDeltaKnob(kIdMakerDeltaModEnvPitch, 0, 100, 50);
+        hMakerDeltaModEnvPitchVal    = mkDeltaValLbl();
+        hMakerDeltaModEnvFiltSlider  = mkDeltaKnob(kIdMakerDeltaModEnvFilt,  0, 100, 50);
+        hMakerDeltaModEnvFiltVal     = mkDeltaValLbl();
+        // Mod LFO: delay, freq, →pitch, →filter, →volume
+        hMakerDeltaModLfoDlySlider   = mkDeltaKnob(kIdMakerDeltaModLfoDly,   0, 100, 50);
+        hMakerDeltaModLfoDlyVal      = mkDeltaValLbl();
+        hMakerDeltaModLfoFqSlider    = mkDeltaKnob(kIdMakerDeltaModLfoFq,    0, 100, 50);
+        hMakerDeltaModLfoFqVal       = mkDeltaValLbl();
+        hMakerDeltaModLfoPitchSlider = mkDeltaKnob(kIdMakerDeltaModLfoPitch, 0, 100, 50);
+        hMakerDeltaModLfoPitchVal    = mkDeltaValLbl();
+        hMakerDeltaModLfoFiltSlider  = mkDeltaKnob(kIdMakerDeltaModLfoFilt,  0, 100, 50);
+        hMakerDeltaModLfoFiltVal     = mkDeltaValLbl();
+        hMakerDeltaModLfoVolSlider   = mkDeltaKnob(kIdMakerDeltaModLfoVol,   0, 100, 50);
+        hMakerDeltaModLfoVolVal      = mkDeltaValLbl();
+        // Vib LFO: delay, freq, →pitch
+        hMakerDeltaVibLfoDlySlider   = mkDeltaKnob(kIdMakerDeltaVibLfoDly,   0, 100, 50);
+        hMakerDeltaVibLfoDlyVal      = mkDeltaValLbl();
+        hMakerDeltaVibLfoFqSlider    = mkDeltaKnob(kIdMakerDeltaVibLfoFq,    0, 100, 50);
+        hMakerDeltaVibLfoFqVal       = mkDeltaValLbl();
+        hMakerDeltaVibLfoPitchSlider = mkDeltaKnob(kIdMakerDeltaVibLfoPitch, 0, 100, 50);
+        hMakerDeltaVibLfoPitchVal    = mkDeltaValLbl();
+        // Dyn/Filtre/Effets
+        hMakerDeltaVolSlider  = mkDeltaKnob(kIdMakerDeltaVol,   0, 100, 50);
+        hMakerDeltaVolVal     = mkDeltaValLbl();
+        hMakerDeltaPanSlider  = mkDeltaKnob(kIdMakerDeltaPan,   0, 100, 50);
+        hMakerDeltaPanVal     = mkDeltaValLbl();
+        hMakerDeltaFiltSlider = mkDeltaKnob(kIdMakerDeltaFilt,  0, 100, 50);
+        hMakerDeltaFiltVal    = mkDeltaValLbl();
+        hMakerDeltaQSlider    = mkDeltaKnob(kIdMakerDeltaQ,     0, 100, 50);
+        hMakerDeltaQVal       = mkDeltaValLbl();
+        hMakerDeltaReverbSlider  = mkDeltaKnob(kIdMakerDeltaReverb,  0, 100, 50);
+        hMakerDeltaReverbVal     = mkDeltaValLbl();
+        hMakerDeltaChorusSlider  = mkDeltaKnob(kIdMakerDeltaChorus,  0, 100, 50);
+        hMakerDeltaChorusVal     = mkDeltaValLbl();
 
         refreshMakerVals();
 
@@ -2522,51 +2970,50 @@ private:
             SendMessageW(b, WM_SETFONT, (WPARAM)fontBold, TRUE);
             return b;
         };
-        auto mkFxSlider = [&](int id, int lo, int hi_, int init) -> HWND {
-            HWND s = CreateWindowW(TRACKBAR_CLASSW, L"",
-                WS_CHILD | TBS_HORZ | TBS_NOTICKS,
-                0, 0, 200, 22, hWnd, (HMENU)(LONG_PTR)id, hi, nullptr);
-            SendMessageW(s, TBM_SETRANGE, TRUE, MAKELPARAM(lo, hi_));
-            SendMessageW(s, TBM_SETPOS, TRUE, init);
-            return s;
+        auto mkFxKnob = [&](int id, int lo, int hi_, int init) -> HWND {
+            HWND h = KnobWidget::create(hWnd, id, 0, 0, kKnobSize, kKnobSize);
+            auto* kw = reinterpret_cast<KnobWidget*>(GetWindowLongPtrW(h, GWLP_USERDATA));
+            if (kw) { kw->posMin = lo; kw->posMax = hi_;
+                      kw->posDefault = init; kw->setPos(init); }
+            return h;
         };
         auto mkFxValLbl = [&]() -> HWND {
-            HWND v = CreateWindowW(L"STATIC", L"", WS_CHILD | SS_LEFT,
-                0, 0, 70, 20, hWnd, nullptr, hi, nullptr);
+            HWND v = CreateWindowW(L"STATIC", L"", WS_CHILD | SS_CENTER,
+                0, 0, kKnobSize, 16, hWnd, nullptr, hi, nullptr);
             SendMessageW(v, WM_SETFONT, (WPARAM)fontBold, TRUE);
             return v;
         };
         // Chorus
         hFxChorusOn       = mkFxToggle(kIdFxChorusOn);
-        hFxChorusRate     = mkFxSlider(kIdFxChorusRate,    5,   600, 70);   // 0.05..6 Hz (×0.01)
+        hFxChorusRate     = mkFxKnob(kIdFxChorusRate,    5,   600, 70);   // 0.05..6 Hz (×0.01)
         hFxChorusRateVal  = mkFxValLbl();
-        hFxChorusDepth    = mkFxSlider(kIdFxChorusDepth,   0,   200, 50);   // 0..20 ms (×0.1)
+        hFxChorusDepth    = mkFxKnob(kIdFxChorusDepth,   0,   200, 50);   // 0..20 ms (×0.1)
         hFxChorusDepthVal = mkFxValLbl();
-        hFxChorusMix      = mkFxSlider(kIdFxChorusMix,     0,   100, 50);   // 0..100%
+        hFxChorusMix      = mkFxKnob(kIdFxChorusMix,     0,   100, 50);   // 0..100%
         hFxChorusMixVal   = mkFxValLbl();
         // Delay
         hFxDelayOn        = mkFxToggle(kIdFxDelayOn);
-        hFxDelayTime      = mkFxSlider(kIdFxDelayTime,    10,  1500, 350);  // 10..1500 ms
+        hFxDelayTime      = mkFxKnob(kIdFxDelayTime,    10,  1500, 350);  // 10..1500 ms
         hFxDelayTimeVal   = mkFxValLbl();
-        hFxDelayFb        = mkFxSlider(kIdFxDelayFb,       0,    92, 40);   // 0..92%
+        hFxDelayFb        = mkFxKnob(kIdFxDelayFb,       0,    92, 40);   // 0..92%
         hFxDelayFbVal     = mkFxValLbl();
-        hFxDelayMix       = mkFxSlider(kIdFxDelayMix,      0,   100, 30);   // 0..100%
+        hFxDelayMix       = mkFxKnob(kIdFxDelayMix,      0,   100, 30);   // 0..100%
         hFxDelayMixVal    = mkFxValLbl();
         // Reverb
         hFxReverbOn       = mkFxToggle(kIdFxReverbOn);
-        hFxReverbSize     = mkFxSlider(kIdFxReverbSize,    0,   100, 55);   // 0..100%
+        hFxReverbSize     = mkFxKnob(kIdFxReverbSize,    0,   100, 55);   // 0..100%
         hFxReverbSizeVal  = mkFxValLbl();
-        hFxReverbDamp     = mkFxSlider(kIdFxReverbDamp,    0,   100, 30);   // 0..100%
+        hFxReverbDamp     = mkFxKnob(kIdFxReverbDamp,    0,   100, 30);   // 0..100%
         hFxReverbDampVal  = mkFxValLbl();
-        hFxReverbMix      = mkFxSlider(kIdFxReverbMix,     0,   100, 25);   // 0..100%
+        hFxReverbMix      = mkFxKnob(kIdFxReverbMix,     0,   100, 25);   // 0..100%
         hFxReverbMixVal   = mkFxValLbl();
         // Cassette noise
         hFxNoiseOn        = mkFxToggle(kIdFxNoiseOn);
-        hFxNoiseLevel     = mkFxSlider(kIdFxNoiseLevel,    0,   100, 10);   // 0..100%
+        hFxNoiseLevel     = mkFxKnob(kIdFxNoiseLevel,    0,   100, 10);   // 0..100%
         hFxNoiseLevelVal  = mkFxValLbl();
-        hFxNoiseFlutter   = mkFxSlider(kIdFxNoiseFlutter,  0,   100, 50);   // 0..100%
+        hFxNoiseFlutter   = mkFxKnob(kIdFxNoiseFlutter,  0,   100, 50);   // 0..100%
         hFxNoiseFlutterVal= mkFxValLbl();
-        hFxNoiseTone      = mkFxSlider(kIdFxNoiseTone,     0,   100, 40);   // 0..100%
+        hFxNoiseTone      = mkFxKnob(kIdFxNoiseTone,     0,   100, 40);   // 0..100%
         hFxNoiseToneVal   = mkFxValLbl();
 
         applyVisibilityForStyle(plugin->getStyleType());
@@ -2615,6 +3062,7 @@ private:
     // -------------------------------------------------------------------------
     void hideAllMakerControls() {
         auto h = [](HWND w) { if (w) ShowWindow(w, SW_HIDE); };
+        h(hDiceBtn); h(hRefreshBtn); h(hOwnSf2Btn);
         h(hMakerEnable);   h(hMakerSynthCombo); h(hMakerNameEdit);
         h(hMakerAttackSlider);   h(hMakerAttackVal);
         h(hMakerDecaySlider);    h(hMakerDecayVal);
@@ -2625,57 +3073,171 @@ private:
         h(hMakerGainSlider);     h(hMakerGainVal);
         h(hMakerLowNoteCombo);   h(hMakerHighNoteCombo);
         h(hMakerStepCombo);      h(hMakerGenerateBtn);
+        // SF2 controls (load button, label, delta sliders)
+        h(hMakerLoadSf2Btn);     h(hMakerSf2Label);
+        showExternalSf2Controls(false);
         mkEnvY = 0; mkTimbreY = 0; mkTessY = 0;
+        mkDeltaAccordY = 0; mkDeltaEnvY = 0; mkDeltaDynY = 0; mkDeltaFiltY = 0; mkDeltaFxY = 0;
     }
 
     void refreshMakerVals() {
-        auto getPos = [&](HWND s) -> int {
-            return s ? (int)SendMessageW(s, TBM_GETPOS, 0, 0) : 0;
-        };
         auto setLbl = [&](HWND lbl, const wchar_t* txt) {
             if (lbl) SetWindowTextW(lbl, txt);
         };
         wchar_t buf[64];
-        swprintf(buf, 64, L"%.2f s", getPos(hMakerAttackSlider) * 0.01f);
+        swprintf(buf, 64, L"%.2f s", kwGetPos(hMakerAttackSlider) * 0.01f);
         setLbl(hMakerAttackVal, buf);
-        swprintf(buf, 64, L"%.2f s", getPos(hMakerDecaySlider) * 0.01f);
+        swprintf(buf, 64, L"%.2f s", kwGetPos(hMakerDecaySlider) * 0.01f);
         setLbl(hMakerDecayVal, buf);
-        swprintf(buf, 64, L"%.0f%%", getPos(hMakerSustainSlider) * 1.0f);
+        swprintf(buf, 64, L"%.0f%%", kwGetPos(hMakerSustainSlider) * 1.0f);
         setLbl(hMakerSustainVal, buf);
-        swprintf(buf, 64, L"%.2f s", getPos(hMakerReleaseSlider) * 0.01f);
+        swprintf(buf, 64, L"%.2f s", kwGetPos(hMakerReleaseSlider) * 0.01f);
         setLbl(hMakerReleaseVal, buf);
-        swprintf(buf, 64, L"%.1f", getPos(hMakerModIndexSlider) * 0.1f);
+        swprintf(buf, 64, L"%.1f", kwGetPos(hMakerModIndexSlider) * 0.1f);
         setLbl(hMakerModIndexVal, buf);
-        swprintf(buf, 64, L"%.1f", getPos(hMakerModDecaySlider) * 0.1f);
+        swprintf(buf, 64, L"%.1f", kwGetPos(hMakerModDecaySlider) * 0.1f);
         setLbl(hMakerModDecayVal, buf);
-        swprintf(buf, 64, L"%.0f%%", getPos(hMakerGainSlider) * 1.0f);
+        swprintf(buf, 64, L"%.0f%%", kwGetPos(hMakerGainSlider) * 1.0f);
         setLbl(hMakerGainVal, buf);
     }
 
     // Rafraîchit les labels des sliders delta SF2 externe.
     void refreshDeltaLabels() {
-        auto gp = [&](HWND s) -> int { return s ? (int)SendMessageW(s, TBM_GETPOS, 0, 0) : 0; };
+        if (!plugin) return;
+        int st = plugin->getStyleType();
+        const sfed::Sf2GenSnapshot& base = plugin->sf2BaseGensPerStyle[st];
+        auto gp = [&](HWND s) -> int { return kwGetPos(s); };
         auto sl = [&](HWND lbl, const wchar_t* txt) { if (lbl) SetWindowTextW(lbl, txt); };
-        wchar_t buf[32];
-        // Tune : centre=24 → 0, 0→-24, 48→+24
-        swprintf(buf, 32, L"%+d", gp(hMakerDeltaTuneSlider) - 24);
-        sl(hMakerDeltaTuneVal, buf);
-        // Timing : centre=50 → ×1.0
-        auto fmtScale = [](wchar_t* b, int pos) {
+        wchar_t buf[40];
+
+        // Tune grossier : affiche valeur absolue = base + delta
+        {
+            int delta = gp(hMakerDeltaTuneSlider) - 24;
+            int abs   = base.coarseTune + delta;
+            swprintf(buf, 40, delta == 0 ? L"%d st" : (delta > 0 ? L"%d st+" : L"%d st"), abs);
+            if (delta != 0) swprintf(buf, 40, L"%d st", abs);
+            else            swprintf(buf, 40, L"%d st", abs);
+            sl(hMakerDeltaTuneVal, buf);
+        }
+        // Accordage fin
+        {
+            int delta = sfed::finetuneSliderToCents(gp(hMakerDeltaFineTuneSlider));
+            int abs   = base.fineTune + delta;
+            swprintf(buf, 40, L"%d ct", abs);
+            sl(hMakerDeltaFineTuneVal, buf);
+        }
+        // Timing sliders : affiche le facteur ×, et en dessous la valeur absolue si base disponible
+        auto fmtTiming = [&](HWND sld, HWND lbl) {
+            int pos = gp(sld);
             float t = (pos - 50) / 50.0f;
             float sc = std::pow(8.0f, t);
-            swprintf(b, 32, L"\u00d7%.2f", sc);
+            swprintf(buf, 40, L"\u00d7%.2f", sc);
+            sl(lbl, buf);
         };
-        fmtScale(buf, gp(hMakerDeltaAtkSlider));  sl(hMakerDeltaAtkVal, buf);
-        fmtScale(buf, gp(hMakerDeltaDecSlider));  sl(hMakerDeltaDecVal, buf);
-        fmtScale(buf, gp(hMakerDeltaRelSlider));  sl(hMakerDeltaRelVal, buf);
-        // Sustain, volume, filtre : delta centré en 50
-        swprintf(buf, 32, L"%+d cb", (gp(hMakerDeltaSusSlider) - 50) * 6);
-        sl(hMakerDeltaSusVal, buf);
-        swprintf(buf, 32, L"%+d cb", (gp(hMakerDeltaVolSlider) - 50) * 4);
-        sl(hMakerDeltaVolVal, buf);
-        swprintf(buf, 32, L"%+d ct", (gp(hMakerDeltaFiltSlider) - 50) * 72);
-        sl(hMakerDeltaFiltVal, buf);
+        auto fmtDelay = [&](HWND sld, HWND lbl) {
+            int pos = gp(sld);
+            int tc = (pos - 50) * 72;
+            swprintf(buf, 40, L"%+d tc", tc);
+            sl(lbl, buf);
+        };
+        auto fmtModDepth = [&](HWND sld, HWND lbl) {
+            int cents = (gp(sld) - 50) * 48;
+            swprintf(buf, 40, L"%+d ct", cents);
+            sl(lbl, buf);
+        };
+        auto fmtLfoFreq = [&](HWND sld, HWND lbl) {
+            int cents = (gp(sld) - 50) * 80;
+            swprintf(buf, 40, L"%+d ct", cents);
+            sl(lbl, buf);
+        };
+        // Scale tuning
+        {
+            int delta = sfed::scaleSliderToDelta(gp(hMakerDeltaScaleSlider));
+            swprintf(buf, 40, L"%+d", delta);
+            sl(hMakerDeltaScaleVal, buf);
+        }
+        // Vol envelope
+        fmtDelay(hMakerDeltaDelayVolSlider, hMakerDeltaDelayVolVal);
+        fmtTiming(hMakerDeltaAtkSlider, hMakerDeltaAtkVal);
+        fmtTiming(hMakerDeltaHoldVolSlider, hMakerDeltaHoldVolVal);
+        fmtTiming(hMakerDeltaDecSlider, hMakerDeltaDecVal);
+        fmtTiming(hMakerDeltaRelSlider, hMakerDeltaRelVal);
+        // Sustain (centibels, 0 = max, +1000 = silence)
+        {
+            int delta = sfed::sustainSliderToCb(gp(hMakerDeltaSusSlider));
+            int abs   = std::clamp((int)base.sustainVol + delta, 0, 1000);
+            swprintf(buf, 40, L"%d cb", abs);
+            sl(hMakerDeltaSusVal, buf);
+        }
+        // Mod envelope
+        fmtDelay(hMakerDeltaDelayModSlider, hMakerDeltaDelayModVal);
+        fmtTiming(hMakerDeltaAtkModSlider, hMakerDeltaAtkModVal);
+        fmtTiming(hMakerDeltaHoldModSlider, hMakerDeltaHoldModVal);
+        fmtTiming(hMakerDeltaDecModSlider, hMakerDeltaDecModVal);
+        {
+            int delta = sfed::sustainSliderToCb(gp(hMakerDeltaSusModSlider));
+            swprintf(buf, 40, L"%+d cb", delta);
+            sl(hMakerDeltaSusModVal, buf);
+        }
+        fmtTiming(hMakerDeltaRelModSlider, hMakerDeltaRelModVal);
+        fmtModDepth(hMakerDeltaModEnvPitchSlider, hMakerDeltaModEnvPitchVal);
+        fmtModDepth(hMakerDeltaModEnvFiltSlider, hMakerDeltaModEnvFiltVal);
+        // Mod LFO
+        fmtDelay(hMakerDeltaModLfoDlySlider, hMakerDeltaModLfoDlyVal);
+        fmtLfoFreq(hMakerDeltaModLfoFqSlider, hMakerDeltaModLfoFqVal);
+        fmtModDepth(hMakerDeltaModLfoPitchSlider, hMakerDeltaModLfoPitchVal);
+        fmtModDepth(hMakerDeltaModLfoFiltSlider, hMakerDeltaModLfoFiltVal);
+        {
+            int cb = sfed::tremoloSliderToCb(gp(hMakerDeltaModLfoVolSlider));
+            swprintf(buf, 40, L"%+d cb", cb);
+            sl(hMakerDeltaModLfoVolVal, buf);
+        }
+        // Vib LFO
+        fmtDelay(hMakerDeltaVibLfoDlySlider, hMakerDeltaVibLfoDlyVal);
+        fmtLfoFreq(hMakerDeltaVibLfoFqSlider, hMakerDeltaVibLfoFqVal);
+        fmtModDepth(hMakerDeltaVibLfoPitchSlider, hMakerDeltaVibLfoPitchVal);
+        // Volume / attenuation
+        {
+            int delta = sfed::volumeSliderToCb(gp(hMakerDeltaVolSlider));
+            int abs   = std::clamp((int)base.attenuation + delta, 0, 960);
+            swprintf(buf, 40, L"%d cb", abs);
+            sl(hMakerDeltaVolVal, buf);
+        }
+        // Filtre cutoff
+        {
+            int delta = sfed::filterSliderToCents(gp(hMakerDeltaFiltSlider));
+            int abs   = std::clamp((int)base.filterFc + delta, 1500, 13500);
+            swprintf(buf, 40, L"%d ct", abs);
+            sl(hMakerDeltaFiltVal, buf);
+        }
+        // Résonance filtre
+        {
+            int delta = sfed::filterQSliderToCb(gp(hMakerDeltaQSlider));
+            int abs   = std::clamp((int)base.filterQ + delta, 0, 960);
+            swprintf(buf, 40, L"%d cb", abs);
+            sl(hMakerDeltaQVal, buf);
+        }
+        // Panoramique
+        {
+            int delta = sfed::panSliderToVal(gp(hMakerDeltaPanSlider));
+            int abs   = std::clamp((int)base.pan + delta, -500, 500);
+            swprintf(buf, 40, L"%+d", abs);
+            sl(hMakerDeltaPanVal, buf);
+        }
+        // Reverb SF2 send
+        {
+            int delta = sfed::reverbSliderToVal(gp(hMakerDeltaReverbSlider));
+            int abs   = std::clamp((int)base.reverb + delta, 0, 1000);
+            swprintf(buf, 40, L"%d \u2030", abs);
+            sl(hMakerDeltaReverbVal, buf);
+        }
+        // Chorus SF2 send
+        {
+            int delta = sfed::chorusSliderToVal(gp(hMakerDeltaChorusSlider));
+            int abs   = std::clamp((int)base.chorus + delta, 0, 1000);
+            swprintf(buf, 40, L"%d \u2030", abs);
+            sl(hMakerDeltaChorusVal, buf);
+        }
     }
 
     // Affiche/cache les contrôles delta SF2 externe selon si un SF2 est chargé.
@@ -2683,36 +3245,85 @@ private:
         int sw = show ? SW_SHOW : SW_HIDE;
         auto sh = [&](HWND h) { if (h) ShowWindow(h, sw); };
         sh(hMakerClearSf2Btn);
-        sh(hMakerDeltaTuneSlider); sh(hMakerDeltaTuneVal);
-        sh(hMakerDeltaAtkSlider);  sh(hMakerDeltaAtkVal);
-        sh(hMakerDeltaDecSlider);  sh(hMakerDeltaDecVal);
-        sh(hMakerDeltaSusSlider);  sh(hMakerDeltaSusVal);
-        sh(hMakerDeltaRelSlider);  sh(hMakerDeltaRelVal);
-        sh(hMakerDeltaVolSlider);  sh(hMakerDeltaVolVal);
-        sh(hMakerDeltaFiltSlider); sh(hMakerDeltaFiltVal);
+        sh(hMakerDeltaTuneSlider);         sh(hMakerDeltaTuneVal);
+        sh(hMakerDeltaFineTuneSlider);     sh(hMakerDeltaFineTuneVal);
+        sh(hMakerDeltaScaleSlider);        sh(hMakerDeltaScaleVal);
+        sh(hMakerDeltaDelayVolSlider);     sh(hMakerDeltaDelayVolVal);
+        sh(hMakerDeltaAtkSlider);          sh(hMakerDeltaAtkVal);
+        sh(hMakerDeltaHoldVolSlider);      sh(hMakerDeltaHoldVolVal);
+        sh(hMakerDeltaDecSlider);          sh(hMakerDeltaDecVal);
+        sh(hMakerDeltaSusSlider);          sh(hMakerDeltaSusVal);
+        sh(hMakerDeltaRelSlider);          sh(hMakerDeltaRelVal);
+        sh(hMakerDeltaDelayModSlider);     sh(hMakerDeltaDelayModVal);
+        sh(hMakerDeltaAtkModSlider);       sh(hMakerDeltaAtkModVal);
+        sh(hMakerDeltaHoldModSlider);      sh(hMakerDeltaHoldModVal);
+        sh(hMakerDeltaDecModSlider);       sh(hMakerDeltaDecModVal);
+        sh(hMakerDeltaSusModSlider);       sh(hMakerDeltaSusModVal);
+        sh(hMakerDeltaRelModSlider);       sh(hMakerDeltaRelModVal);
+        sh(hMakerDeltaModEnvPitchSlider);  sh(hMakerDeltaModEnvPitchVal);
+        sh(hMakerDeltaModEnvFiltSlider);   sh(hMakerDeltaModEnvFiltVal);
+        sh(hMakerDeltaModLfoDlySlider);    sh(hMakerDeltaModLfoDlyVal);
+        sh(hMakerDeltaModLfoFqSlider);     sh(hMakerDeltaModLfoFqVal);
+        sh(hMakerDeltaModLfoPitchSlider);  sh(hMakerDeltaModLfoPitchVal);
+        sh(hMakerDeltaModLfoFiltSlider);   sh(hMakerDeltaModLfoFiltVal);
+        sh(hMakerDeltaModLfoVolSlider);    sh(hMakerDeltaModLfoVolVal);
+        sh(hMakerDeltaVibLfoDlySlider);    sh(hMakerDeltaVibLfoDlyVal);
+        sh(hMakerDeltaVibLfoFqSlider);     sh(hMakerDeltaVibLfoFqVal);
+        sh(hMakerDeltaVibLfoPitchSlider);  sh(hMakerDeltaVibLfoPitchVal);
+        sh(hMakerDeltaVolSlider);          sh(hMakerDeltaVolVal);
+        sh(hMakerDeltaPanSlider);          sh(hMakerDeltaPanVal);
+        sh(hMakerDeltaFiltSlider);         sh(hMakerDeltaFiltVal);
+        sh(hMakerDeltaQSlider);            sh(hMakerDeltaQVal);
+        sh(hMakerDeltaReverbSlider);       sh(hMakerDeltaReverbVal);
+        sh(hMakerDeltaChorusSlider);       sh(hMakerDeltaChorusVal);
+        if (!show && hMakerScrollBar) {
+            makerScrollY = 0;
+            ShowWindow(hMakerScrollBar, SW_HIDE);
+        }
         InvalidateRect(hWnd, nullptr, TRUE);
     }
 
     // Lit les sliders delta et met à jour sf2DeltaPerStyle[st] + recharge le SF2.
     void commitDeltaAndReload(int st) {
         if (!plugin || plugin->externalSf2PerStyle[st].empty()) return;
-        auto gp = [&](HWND s) -> int { return s ? (int)SendMessageW(s, TBM_GETPOS, 0, 0) : 0; };
+        auto gp = [&](HWND s) -> int { return kwGetPos(s); };
         sfed::Sf2Delta& d = plugin->sf2DeltaPerStyle[st];
         d.coarseTune      = gp(hMakerDeltaTuneSlider) - 24;
+        d.fineTune        = sfed::finetuneSliderToCents(gp(hMakerDeltaFineTuneSlider));
+        d.scaleTuning     = sfed::scaleSliderToDelta(gp(hMakerDeltaScaleSlider));
+        d.delayVolDelta   = sfed::delaySliderToTc(gp(hMakerDeltaDelayVolSlider));
         d.attackDelta     = sfed::timingSliderToTc(gp(hMakerDeltaAtkSlider));
+        d.holdDelta       = sfed::timingSliderToTc(gp(hMakerDeltaHoldVolSlider));
         d.decayDelta      = sfed::timingSliderToTc(gp(hMakerDeltaDecSlider));
         d.releaseDelta    = sfed::timingSliderToTc(gp(hMakerDeltaRelSlider));
         d.sustainDelta    = sfed::sustainSliderToCb(gp(hMakerDeltaSusSlider));
+        d.delayModDelta   = sfed::delaySliderToTc(gp(hMakerDeltaDelayModSlider));
+        d.modAttackDelta  = sfed::timingSliderToTc(gp(hMakerDeltaAtkModSlider));
+        d.modHoldDelta    = sfed::timingSliderToTc(gp(hMakerDeltaHoldModSlider));
+        d.modDecayDelta   = sfed::timingSliderToTc(gp(hMakerDeltaDecModSlider));
+        d.modSustainDelta = sfed::sustainSliderToCb(gp(hMakerDeltaSusModSlider));
+        d.modReleaseDelta = sfed::timingSliderToTc(gp(hMakerDeltaRelModSlider));
+        d.modEnvToPitch   = sfed::modDepthSliderToCents(gp(hMakerDeltaModEnvPitchSlider));
+        d.modEnvToFilter  = sfed::modDepthSliderToCents(gp(hMakerDeltaModEnvFiltSlider));
+        d.modLfoDelay     = sfed::delaySliderToTc(gp(hMakerDeltaModLfoDlySlider));
+        d.modLfoFreq      = sfed::lfoFreqSliderToCents(gp(hMakerDeltaModLfoFqSlider));
+        d.modLfoToPitch   = sfed::modDepthSliderToCents(gp(hMakerDeltaModLfoPitchSlider));
+        d.modLfoToFilter  = sfed::modDepthSliderToCents(gp(hMakerDeltaModLfoFiltSlider));
+        d.modLfoToVolume  = sfed::tremoloSliderToCb(gp(hMakerDeltaModLfoVolSlider));
+        d.vibLfoDelay     = sfed::delaySliderToTc(gp(hMakerDeltaVibLfoDlySlider));
+        d.vibLfoFreq      = sfed::lfoFreqSliderToCents(gp(hMakerDeltaVibLfoFqSlider));
+        d.vibLfoToPitch   = sfed::modDepthSliderToCents(gp(hMakerDeltaVibLfoPitchSlider));
         d.attenuationDelta= sfed::volumeSliderToCb(gp(hMakerDeltaVolSlider));
         d.filterFcDelta   = sfed::filterSliderToCents(gp(hMakerDeltaFiltSlider));
+        d.filterQDelta    = sfed::filterQSliderToCb(gp(hMakerDeltaQSlider));
+        d.panDelta        = sfed::panSliderToVal(gp(hMakerDeltaPanSlider));
+        d.reverbDelta     = sfed::reverbSliderToVal(gp(hMakerDeltaReverbSlider));
+        d.chorusDelta     = sfed::chorusSliderToVal(gp(hMakerDeltaChorusSlider));
         refreshDeltaLabels();
         plugin->reloadExternalSf(st);
     }
 
     void loadMakerCfgFromControls(int style) {
-        auto getPos = [&](HWND s) -> int {
-            return s ? (int)SendMessageW(s, TBM_GETPOS, 0, 0) : 0;
-        };
         sfm::SfmConfig& cfg = makerCfg[style];
         if (hMakerNameEdit) {
             wchar_t wbuf[128] = {};
@@ -2725,13 +3336,13 @@ private:
             int idx = (int)SendMessageW(hMakerSynthCombo, CB_GETCURSEL, 0, 0);
             cfg.synthType = (sfm::SfmSynth)std::clamp(idx, 0, 2);
         }
-        cfg.attack   = std::max(0.001f, getPos(hMakerAttackSlider)   * 0.01f);
-        cfg.decay    = std::max(0.001f, getPos(hMakerDecaySlider)    * 0.01f);
-        cfg.sustain  = getPos(hMakerSustainSlider) * 0.01f;
-        cfg.release  = std::max(0.001f, getPos(hMakerReleaseSlider)  * 0.01f);
-        cfg.modIndex = getPos(hMakerModIndexSlider) * 0.1f;
-        cfg.modDecay = getPos(hMakerModDecaySlider) * 0.1f;
-        cfg.gain     = std::max(0.01f, getPos(hMakerGainSlider) * 0.01f);
+        cfg.attack   = std::max(0.001f, kwGetPos(hMakerAttackSlider)   * 0.01f);
+        cfg.decay    = std::max(0.001f, kwGetPos(hMakerDecaySlider)    * 0.01f);
+        cfg.sustain  = kwGetPos(hMakerSustainSlider) * 0.01f;
+        cfg.release  = std::max(0.001f, kwGetPos(hMakerReleaseSlider)  * 0.01f);
+        cfg.modIndex = kwGetPos(hMakerModIndexSlider) * 0.1f;
+        cfg.modDecay = kwGetPos(hMakerModDecaySlider) * 0.1f;
+        cfg.gain     = std::max(0.01f, kwGetPos(hMakerGainSlider) * 0.01f);
         static const int kLN[] = { 24, 30, 36, 42, 48 };
         if (hMakerLowNoteCombo) {
             int idx = (int)SendMessageW(hMakerLowNoteCombo, CB_GETCURSEL, 0, 0);
@@ -2760,26 +3371,20 @@ private:
             SendMessageW(hMakerSynthCombo, CB_SETCURSEL, (int)cfg.synthType, 0);
         // Apply per-style slider ranges so the delta stays meaningful
         const MkStyleDef& d = kMkStyle[style];
-        auto setRange = [&](HWND s, int lo, int hi) {
-            if (!s) return;
-            SendMessageW(s, TBM_SETRANGEMIN, FALSE, lo);
-            SendMessageW(s, TBM_SETRANGEMAX, TRUE,  hi);
-        };
-        setRange(hMakerAttackSlider,   d.atkMin, d.atkMax);
-        setRange(hMakerDecaySlider,    d.decMin, d.decMax);
-        setRange(hMakerSustainSlider,  d.susMin, d.susMax);
-        setRange(hMakerReleaseSlider,  d.relMin, d.relMax);
-        setRange(hMakerModIndexSlider, d.miMin,  d.miMax);
-        setRange(hMakerModDecaySlider, d.mdMin,  d.mdMax);
-        setRange(hMakerGainSlider,     d.gaMin,  d.gaMax);
-        auto setS = [&](HWND s, int v) { if (s) SendMessageW(s, TBM_SETPOS, TRUE, v); };
-        setS(hMakerAttackSlider,   std::clamp((int)std::round(cfg.attack   / 0.01f), d.atkMin, d.atkMax));
-        setS(hMakerDecaySlider,    std::clamp((int)std::round(cfg.decay    / 0.01f), d.decMin, d.decMax));
-        setS(hMakerSustainSlider,  std::clamp((int)std::round(cfg.sustain  / 0.01f), d.susMin, d.susMax));
-        setS(hMakerReleaseSlider,  std::clamp((int)std::round(cfg.release  / 0.01f), d.relMin, d.relMax));
-        setS(hMakerModIndexSlider, std::clamp((int)std::round(cfg.modIndex / 0.1f),  d.miMin,  d.miMax));
-        setS(hMakerModDecaySlider, std::clamp((int)std::round(cfg.modDecay / 0.1f),  d.mdMin,  d.mdMax));
-        setS(hMakerGainSlider,     std::clamp((int)std::round(cfg.gain     / 0.01f), d.gaMin,  d.gaMax));
+        kwSetRange(hMakerAttackSlider,   d.atkMin, d.atkMax);
+        kwSetRange(hMakerDecaySlider,    d.decMin, d.decMax);
+        kwSetRange(hMakerSustainSlider,  d.susMin, d.susMax);
+        kwSetRange(hMakerReleaseSlider,  d.relMin, d.relMax);
+        kwSetRange(hMakerModIndexSlider, d.miMin,  d.miMax);
+        kwSetRange(hMakerModDecaySlider, d.mdMin,  d.mdMax);
+        kwSetRange(hMakerGainSlider,     d.gaMin,  d.gaMax);
+        kwSetPos(hMakerAttackSlider,   std::clamp((int)std::round(cfg.attack   / 0.01f), d.atkMin, d.atkMax));
+        kwSetPos(hMakerDecaySlider,    std::clamp((int)std::round(cfg.decay    / 0.01f), d.decMin, d.decMax));
+        kwSetPos(hMakerSustainSlider,  std::clamp((int)std::round(cfg.sustain  / 0.01f), d.susMin, d.susMax));
+        kwSetPos(hMakerReleaseSlider,  std::clamp((int)std::round(cfg.release  / 0.01f), d.relMin, d.relMax));
+        kwSetPos(hMakerModIndexSlider, std::clamp((int)std::round(cfg.modIndex / 0.1f),  d.miMin,  d.miMax));
+        kwSetPos(hMakerModDecaySlider, std::clamp((int)std::round(cfg.modDecay / 0.1f),  d.mdMin,  d.mdMax));
+        kwSetPos(hMakerGainSlider,     std::clamp((int)std::round(cfg.gain     / 0.01f), d.gaMin,  d.gaMax));
         static const int kLN[] = { 24, 30, 36, 42, 48 };
         if (hMakerLowNoteCombo) {
             int sel = 2;
@@ -2822,50 +3427,66 @@ private:
 
     static int gp(HWND s) { return s ? (int)SendMessageW(s, TBM_GETPOS, 0, 0) : 0; }
 
+    // KnobWidget helpers (used for Maker ADSR/Timbre + FX knobs)
+    static int kwGetPos(HWND h) {
+        if (!h) return 0;
+        auto* kw = reinterpret_cast<KnobWidget*>(GetWindowLongPtrW(h, GWLP_USERDATA));
+        return kw ? kw->getPos() : 0;
+    }
+    static void kwSetPos(HWND h, int v) {
+        if (!h) return;
+        auto* kw = reinterpret_cast<KnobWidget*>(GetWindowLongPtrW(h, GWLP_USERDATA));
+        if (kw) kw->setPos(v);
+    }
+    static void kwSetRange(HWND h, int lo, int hi) {
+        if (!h) return;
+        auto* kw = reinterpret_cast<KnobWidget*>(GetWindowLongPtrW(h, GWLP_USERDATA));
+        if (kw) { kw->posMin = lo; kw->posMax = hi; }
+    }
+
     void refreshFxLabels() {
         wchar_t buf[64];
         auto setLbl = [&](HWND lbl, const wchar_t* txt) {
             if (lbl) SetWindowTextW(lbl, txt);
         };
         // Chorus
-        swprintf(buf, 64, L"%.2f Hz", gp(hFxChorusRate)  * 0.01f);   setLbl(hFxChorusRateVal, buf);
-        swprintf(buf, 64, L"%.1f ms", gp(hFxChorusDepth) * 0.1f);    setLbl(hFxChorusDepthVal, buf);
-        swprintf(buf, 64, L"%d%%",    gp(hFxChorusMix));             setLbl(hFxChorusMixVal, buf);
+        swprintf(buf, 64, L"%.2f Hz", kwGetPos(hFxChorusRate)  * 0.01f);   setLbl(hFxChorusRateVal, buf);
+        swprintf(buf, 64, L"%.1f ms", kwGetPos(hFxChorusDepth) * 0.1f);    setLbl(hFxChorusDepthVal, buf);
+        swprintf(buf, 64, L"%d%%",    kwGetPos(hFxChorusMix));             setLbl(hFxChorusMixVal, buf);
         // Delay
-        swprintf(buf, 64, L"%d ms",   gp(hFxDelayTime));             setLbl(hFxDelayTimeVal, buf);
-        swprintf(buf, 64, L"%d%%",    gp(hFxDelayFb));               setLbl(hFxDelayFbVal, buf);
-        swprintf(buf, 64, L"%d%%",    gp(hFxDelayMix));              setLbl(hFxDelayMixVal, buf);
+        swprintf(buf, 64, L"%d ms",   kwGetPos(hFxDelayTime));             setLbl(hFxDelayTimeVal, buf);
+        swprintf(buf, 64, L"%d%%",    kwGetPos(hFxDelayFb));               setLbl(hFxDelayFbVal, buf);
+        swprintf(buf, 64, L"%d%%",    kwGetPos(hFxDelayMix));              setLbl(hFxDelayMixVal, buf);
         // Reverb
-        swprintf(buf, 64, L"%d%%",    gp(hFxReverbSize));            setLbl(hFxReverbSizeVal, buf);
-        swprintf(buf, 64, L"%d%%",    gp(hFxReverbDamp));            setLbl(hFxReverbDampVal, buf);
-        swprintf(buf, 64, L"%d%%",    gp(hFxReverbMix));             setLbl(hFxReverbMixVal, buf);
+        swprintf(buf, 64, L"%d%%",    kwGetPos(hFxReverbSize));            setLbl(hFxReverbSizeVal, buf);
+        swprintf(buf, 64, L"%d%%",    kwGetPos(hFxReverbDamp));            setLbl(hFxReverbDampVal, buf);
+        swprintf(buf, 64, L"%d%%",    kwGetPos(hFxReverbMix));             setLbl(hFxReverbMixVal, buf);
         // Cassette noise
-        swprintf(buf, 64, L"%d%%",    gp(hFxNoiseLevel));            setLbl(hFxNoiseLevelVal, buf);
-        swprintf(buf, 64, L"%d%%",    gp(hFxNoiseFlutter));          setLbl(hFxNoiseFlutterVal, buf);
-        swprintf(buf, 64, L"%d%%",    gp(hFxNoiseTone));             setLbl(hFxNoiseToneVal, buf);
+        swprintf(buf, 64, L"%d%%",    kwGetPos(hFxNoiseLevel));            setLbl(hFxNoiseLevelVal, buf);
+        swprintf(buf, 64, L"%d%%",    kwGetPos(hFxNoiseFlutter));          setLbl(hFxNoiseFlutterVal, buf);
+        swprintf(buf, 64, L"%d%%",    kwGetPos(hFxNoiseTone));             setLbl(hFxNoiseToneVal, buf);
     }
 
     void refreshFxFromParams(int style) {
         if (!plugin || style < 0 || style >= 6) return;
         const auto& p = plugin->fxParamsPerStyle[style];
-        auto setS = [&](HWND s, int v) { if (s) SendMessageW(s, TBM_SETPOS, TRUE, v); };
-        // Invert the x^2*max curve: slider = round(sqrt(v/max)*100)
+        // Invert the x^2*max curve: knob = round(sqrt(v/max)*100)
         auto invSq = [](float v, float maxV) -> int {
             if (maxV <= 0.0f) return 0;
             return (int)std::round(std::sqrt(std::clamp(v / maxV, 0.0f, 1.0f)) * 100.0f);
         };
-        setS(hFxChorusRate,    std::clamp((int)std::round(p.chorusRate / 0.01f), 5, 600));
-        setS(hFxChorusDepth,   std::clamp(invSq(p.chorusDepth, 0.80f), 0, 100));
-        setS(hFxChorusMix,     std::clamp(invSq(p.chorusMix,   0.60f), 0, 100));
-        setS(hFxDelayTime,     std::clamp((int)std::round(p.delayTime), 10, 1500));
-        setS(hFxDelayFb,       std::clamp(invSq(p.delayFb,  0.88f), 0, 100));
-        setS(hFxDelayMix,      std::clamp(invSq(p.delayMix, 0.60f), 0, 100));
-        setS(hFxReverbSize,    std::clamp(invSq(p.reverbSize, 0.92f), 0, 100));
-        setS(hFxReverbDamp,    std::clamp((int)std::round(p.reverbDamp * 100.0f), 0, 100));
-        setS(hFxReverbMix,     std::clamp(invSq(p.reverbMix, 0.65f), 0, 100));
-        setS(hFxNoiseLevel,    std::clamp((int)std::round(p.noiseLevel * 100.0f), 0, 100));
-        setS(hFxNoiseFlutter,  std::clamp((int)std::round(p.noiseFlutter * 100.0f), 0, 100));
-        setS(hFxNoiseTone,     std::clamp((int)std::round(p.noiseTone * 100.0f), 0, 100));
+        kwSetPos(hFxChorusRate,    std::clamp((int)std::round(p.chorusRate / 0.01f), 5, 600));
+        kwSetPos(hFxChorusDepth,   std::clamp(invSq(p.chorusDepth, 0.80f), 0, 100));
+        kwSetPos(hFxChorusMix,     std::clamp(invSq(p.chorusMix,   0.60f), 0, 100));
+        kwSetPos(hFxDelayTime,     std::clamp((int)std::round(p.delayTime), 10, 1500));
+        kwSetPos(hFxDelayFb,       std::clamp(invSq(p.delayFb,  0.88f), 0, 100));
+        kwSetPos(hFxDelayMix,      std::clamp(invSq(p.delayMix, 0.60f), 0, 100));
+        kwSetPos(hFxReverbSize,    std::clamp(invSq(p.reverbSize, 0.92f), 0, 100));
+        kwSetPos(hFxReverbDamp,    std::clamp((int)std::round(p.reverbDamp * 100.0f), 0, 100));
+        kwSetPos(hFxReverbMix,     std::clamp(invSq(p.reverbMix, 0.65f), 0, 100));
+        kwSetPos(hFxNoiseLevel,    std::clamp((int)std::round(p.noiseLevel * 100.0f), 0, 100));
+        kwSetPos(hFxNoiseFlutter,  std::clamp((int)std::round(p.noiseFlutter * 100.0f), 0, 100));
+        kwSetPos(hFxNoiseTone,     std::clamp((int)std::round(p.noiseTone * 100.0f), 0, 100));
         if (hFxChorusOn) SetWindowTextW(hFxChorusOn, p.chorusOn ? L"\u25cf OUI" : L"\u25cb NON");
         if (hFxDelayOn)  SetWindowTextW(hFxDelayOn,  p.delayOn  ? L"\u25cf OUI" : L"\u25cb NON");
         if (hFxReverbOn) SetWindowTextW(hFxReverbOn, p.reverbOn ? L"\u25cf OUI" : L"\u25cb NON");
@@ -2876,22 +3497,22 @@ private:
     void commitFxFromControls(int style) {
         if (!plugin || style < 0 || style >= 6) return;
         auto& p = plugin->fxParamsPerStyle[style];
-        // Helper: x^2 curve so 20% slider → 4% effect, 50% → 25%, 100% → 100%.
+        // Helper: x^2 curve so 20% knob → 4% effect, 50% → 25%, 100% → 100%.
         // Applied to perceptual "intensity" params (mix, depth, feedback, size).
         // Rate / time / tone / damp stay linear.
         auto sq = [](float v) { return v * v; };
-        p.chorusRate  = gp(hFxChorusRate)   * 0.01f;                    // linear (Hz)
-        p.chorusDepth = sq(gp(hFxChorusDepth) * 0.01f) * 0.8f;          // log, max 0.8 ms
-        p.chorusMix   = sq(gp(hFxChorusMix)   * 0.01f) * 0.60f;         // log, max 60%
-        p.delayTime   = (float)gp(hFxDelayTime);                         // linear (ms)
-        p.delayFb     = sq(gp(hFxDelayFb)     * 0.01f) * 0.88f;         // log, max 0.88
-        p.delayMix    = sq(gp(hFxDelayMix)    * 0.01f) * 0.60f;         // log, max 60%
-        p.reverbSize  = sq(gp(hFxReverbSize)  * 0.01f) * 0.92f;         // log, max 0.92
-        p.reverbDamp  = gp(hFxReverbDamp)  * 0.01f;                      // linear (tone)
-        p.reverbMix   = sq(gp(hFxReverbMix)   * 0.01f) * 0.65f;         // log, max 65%
-        p.noiseLevel  = gp(hFxNoiseLevel)  * 0.01f;  // setLevel() applies l² internally
-        p.noiseFlutter= gp(hFxNoiseFlutter)* 0.01f;
-        p.noiseTone   = gp(hFxNoiseTone)   * 0.01f;
+        p.chorusRate  = kwGetPos(hFxChorusRate)   * 0.01f;
+        p.chorusDepth = sq(kwGetPos(hFxChorusDepth) * 0.01f) * 0.8f;
+        p.chorusMix   = sq(kwGetPos(hFxChorusMix)   * 0.01f) * 0.60f;
+        p.delayTime   = (float)kwGetPos(hFxDelayTime);
+        p.delayFb     = sq(kwGetPos(hFxDelayFb)     * 0.01f) * 0.88f;
+        p.delayMix    = sq(kwGetPos(hFxDelayMix)    * 0.01f) * 0.60f;
+        p.reverbSize  = sq(kwGetPos(hFxReverbSize)  * 0.01f) * 0.92f;
+        p.reverbDamp  = kwGetPos(hFxReverbDamp)  * 0.01f;
+        p.reverbMix   = sq(kwGetPos(hFxReverbMix)   * 0.01f) * 0.65f;
+        p.noiseLevel  = kwGetPos(hFxNoiseLevel)  * 0.01f;
+        p.noiseFlutter= kwGetPos(hFxNoiseFlutter)* 0.01f;
+        p.noiseTone   = kwGetPos(hFxNoiseTone)   * 0.01f;
         std::lock_guard<std::mutex> lk(plugin->fxMutex);
         plugin->applyFxParamsToChain(style);
     }
@@ -2904,8 +3525,9 @@ private:
         bool showProg    = !isPerc;
         bool showDensity = !isPerc; // perc rhythm has fixed density (pattern)
         bool showOctave  = !isPerc;
-        // Kill maker timer when navigating away from maker view
+        // Kill maker timers when navigating away from maker view
         if (viewMode != 2 && makerTimerId) { KillTimer(hWnd, makerTimerId); makerTimerId = 0; }
+        if (viewMode != 2) KillTimer(hWnd, 1202); // kill delta debounce if any
 
         auto hideRow = [&](HWND lbl, HWND ctl, HWND val) {
             if (lbl) ShowWindow(lbl, SW_HIDE);
@@ -3002,6 +3624,17 @@ private:
             // Start the auto-refresh timer (fires every 1.2 s)
             if (!makerTimerId) makerTimerId = SetTimer(hWnd, 1201, 1200, nullptr);
             if (hAutoBtn)        ShowWindow(hAutoBtn,        SW_HIDE);
+            if (hDiceBtn)        ShowWindow(hDiceBtn,        SW_HIDE); // Hide dice in Maker tab
+            // Place Own-SF2 toggle in the header (same position as LISTEN in other views)
+            if (hOwnSf2Btn) {
+                int btnW = 160, btnH = 26;
+                int st2 = plugin ? plugin->getStyleType() : 0;
+                bool hasSf2_ = plugin && !plugin->externalSf2PerStyle[st2].empty();
+                SetWindowTextW(hOwnSf2Btn, hasSf2_ ? L"SF2  \u25CF  ON" : L"SF2  \u25CB  OFF");
+                MoveWindow(hOwnSf2Btn, kViewWidth - kPadX - btnW, (kHeaderH - btnH) / 2, btnW, btnH, TRUE);
+                ShowWindow(hOwnSf2Btn, SW_SHOW);
+                InvalidateRect(hOwnSf2Btn, nullptr, TRUE);
+            }
             if (hMeterCombo)     ShowWindow(hMeterCombo,     SW_HIDE);
             if (hMeterLabel)     ShowWindow(hMeterLabel,     SW_HIDE);
             if (hSectionCombo)   ShowWindow(hSectionCombo,   SW_HIDE);
@@ -3019,120 +3652,243 @@ private:
             const int mkValW  = 90;             // value label width
             const int mkRowH  = 30;             // row height
 
-            int y = kHeaderH + kTabsH + 44;    // start below instrument header bar
+            int y = kHeaderH + kTabsH + 44 - makerScrollY;    // start below instrument header bar
 
             // Enable button (top-right of header bar)
             if (hMakerEnable) {
-                MoveWindow(hMakerEnable, kViewWidth - kPadX - 114, kHeaderH + kTabsH + 8, 110, 28, TRUE);
+                MoveWindow(hMakerEnable, kViewWidth - kPadX - 144, kHeaderH + kTabsH + 8, 140, 28, TRUE);
                 ShowWindow(hMakerEnable, SW_SHOW);
             }
             // Sync enable button text
             if (hMakerEnable) SetWindowTextW(hMakerEnable,
                 makerEnabled[style] ? L"\u25cf OUI" : L"\u25cb NON");
-
-            // ---- Nom du preset ----
-            mkRowY[0] = y;
-            if (hMakerNameEdit) {
-                MoveWindow(hMakerNameEdit, mkX + mkLblW + 8, y, mkSldW, 22, TRUE);
-                ShowWindow(hMakerNameEdit, SW_SHOW);
+            // Refresh button: top-right corner of content area
+            if (hRefreshBtn) {
+                MoveWindow(hRefreshBtn, kViewWidth - kPadX - 36, kHeaderH + kTabsH + 8, 32, 28, TRUE);
+                ShowWindow(hRefreshBtn, SW_SHOW);
             }
-            y += mkRowH;
 
-            // ---- Type de synth\u00e8se ----
-            mkRowY[1] = y;
-            if (hMakerSynthCombo) {
-                MoveWindow(hMakerSynthCombo, mkX + mkLblW + 8, y, 280, 24, TRUE);
-                ShowWindow(hMakerSynthCombo, SW_SHOW);
-            }
-            y += mkRowH + 4;
-
-            // ---- ENVELOPPE section ----
-            mkEnvY = y;
-            y += 22;
-
-            auto placeSliderRow = [&](HWND sld, HWND val, int yRow) {
-                if (sld) { MoveWindow(sld, mkX + mkLblW + 8, yRow + 3, mkSldW, 22, TRUE); ShowWindow(sld, SW_SHOW); }
-                if (val) { MoveWindow(val, mkX + mkLblW + 8 + mkSldW + 8, yRow + 5, mkValW, 18, TRUE); ShowWindow(val, SW_SHOW); }
-            };
-            mkRowY[2] = y; placeSliderRow(hMakerAttackSlider,   hMakerAttackVal,   y); y += mkRowH;
-            mkRowY[3] = y; placeSliderRow(hMakerDecaySlider,    hMakerDecayVal,    y); y += mkRowH;
-            mkRowY[4] = y; placeSliderRow(hMakerSustainSlider,  hMakerSustainVal,  y); y += mkRowH;
-            mkRowY[5] = y; placeSliderRow(hMakerReleaseSlider,  hMakerReleaseVal,  y); y += mkRowH + 6;
-
-            // ---- TIMBRE section ----
-            mkTimbreY = y;
-            y += 22;
-            mkRowY[6] = y; placeSliderRow(hMakerModIndexSlider, hMakerModIndexVal, y); y += mkRowH;
-            mkRowY[7] = y; placeSliderRow(hMakerModDecaySlider, hMakerModDecayVal, y); y += mkRowH;
-            mkRowY[8] = y; placeSliderRow(hMakerGainSlider,     hMakerGainVal,     y); y += mkRowH + 6;
-
-            // ---- TESSITURE section ----
-            mkTessY = y;
-            y += 22;
-            mkRowY[9] = y;
-            // Three combos on one row: Note basse | Note haute | Pas
-            {
-                const int cmbW  = 130;
-                const int cmbW2 = 190;
-                const int gap   = 20;
-                const int lblW2 = 90;
-                int cx = mkX + mkLblW + 8;
-                if (hMakerLowNoteCombo) {
-                    MoveWindow(hMakerLowNoteCombo, cx, y, cmbW, 24, TRUE);
-                    ShowWindow(hMakerLowNoteCombo, SW_SHOW);
-                }
-                cx += cmbW + gap + lblW2 + 4;
-                if (hMakerHighNoteCombo) {
-                    MoveWindow(hMakerHighNoteCombo, cx, y, cmbW, 24, TRUE);
-                    ShowWindow(hMakerHighNoteCombo, SW_SHOW);
-                }
-                cx += cmbW + gap + lblW2 + 4;
-                if (hMakerStepCombo) {
-                    MoveWindow(hMakerStepCombo, cx, y, cmbW2, 24, TRUE);
-                    ShowWindow(hMakerStepCombo, SW_SHOW);
-                }
-            }
-            y += mkRowH + 10;
-
-            // ---- GÉNÉRER button ----
-            if (hMakerGenerateBtn) {
-                MoveWindow(hMakerGenerateBtn, mkX, y, 200, 36, TRUE);
-                ShowWindow(hMakerGenerateBtn, SW_SHOW);
-            }
-            y += 44;
-
-            // ---- ÉDITEUR SF2 EXTERNE ----
-            // Bouton "Charger SF2..." toujours visible dans Maker
-            if (hMakerLoadSf2Btn) {
-                MoveWindow(hMakerLoadSf2Btn, mkX, y, 160, 26, TRUE);
-                ShowWindow(hMakerLoadSf2Btn, SW_SHOW);
-            }
-            if (hMakerClearSf2Btn) {
-                MoveWindow(hMakerClearSf2Btn, mkX + 166, y, 85, 26, TRUE);
-            }
-            if (hMakerSf2Label) {
-                MoveWindow(hMakerSf2Label, mkX, y + 28, mkSldW + mkValW + 8, 18, TRUE);
-                ShowWindow(hMakerSf2Label, SW_SHOW);
-            }
-            y += 50;
-            // Sliders delta — visibles seulement si un SF2 externe est chargé
+            // ---- SF2 EXTERNE block (toujours en haut) ----
             bool hasSf2 = plugin && !plugin->externalSf2PerStyle[style].empty();
+            // Load/Clear SF2 now handled by hOwnSf2Btn in the header
+            if (hMakerLoadSf2Btn)  ShowWindow(hMakerLoadSf2Btn,  SW_HIDE);
+            if (hMakerClearSf2Btn) ShowWindow(hMakerClearSf2Btn, SW_HIDE);
+            if (hMakerSf2Label) {
+                MoveWindow(hMakerSf2Label, mkX, y + 4, mkW, 18, TRUE);
+                ShowWindow(hMakerSf2Label, hasSf2 ? SW_SHOW : SW_HIDE);
+            }
+            if (hasSf2) y += 36;
+
             if (hasSf2) {
-                auto placeDelta = [&](HWND sl, HWND vl) {
-                    if (sl) { MoveWindow(sl, mkX + mkLblW + 8, y, mkSldW, 22, TRUE); ShowWindow(sl, SW_SHOW); }
-                    if (vl) { MoveWindow(vl, mkX + mkLblW + 8 + mkSldW + 4, y, mkValW, 18, TRUE); ShowWindow(vl, SW_SHOW); }
-                    y += mkRowH;
+                // Masquer les contrôles de synthèse (non utilisés quand un SF2 externe est chargé)
+                if (hMakerNameEdit)        ShowWindow(hMakerNameEdit,       SW_HIDE);
+                if (hMakerSynthCombo)      ShowWindow(hMakerSynthCombo,     SW_HIDE);
+                if (hMakerAttackSlider)    ShowWindow(hMakerAttackSlider,   SW_HIDE);
+                if (hMakerAttackVal)       ShowWindow(hMakerAttackVal,      SW_HIDE);
+                if (hMakerDecaySlider)     ShowWindow(hMakerDecaySlider,    SW_HIDE);
+                if (hMakerDecayVal)        ShowWindow(hMakerDecayVal,       SW_HIDE);
+                if (hMakerSustainSlider)   ShowWindow(hMakerSustainSlider,  SW_HIDE);
+                if (hMakerSustainVal)      ShowWindow(hMakerSustainVal,     SW_HIDE);
+                if (hMakerReleaseSlider)   ShowWindow(hMakerReleaseSlider,  SW_HIDE);
+                if (hMakerReleaseVal)      ShowWindow(hMakerReleaseVal,     SW_HIDE);
+                if (hMakerModIndexSlider)  ShowWindow(hMakerModIndexSlider, SW_HIDE);
+                if (hMakerModIndexVal)     ShowWindow(hMakerModIndexVal,    SW_HIDE);
+                if (hMakerModDecaySlider)  ShowWindow(hMakerModDecaySlider, SW_HIDE);
+                if (hMakerModDecayVal)     ShowWindow(hMakerModDecayVal,    SW_HIDE);
+                if (hMakerGainSlider)      ShowWindow(hMakerGainSlider,     SW_HIDE);
+                if (hMakerGainVal)         ShowWindow(hMakerGainVal,        SW_HIDE);
+                if (hMakerLowNoteCombo)    ShowWindow(hMakerLowNoteCombo,   SW_HIDE);
+                if (hMakerHighNoteCombo)   ShowWindow(hMakerHighNoteCombo,  SW_HIDE);
+                if (hMakerStepCombo)       ShowWindow(hMakerStepCombo,      SW_HIDE);
+                if (hMakerGenerateBtn)     ShowWindow(hMakerGenerateBtn,    SW_HIDE);
+                mkRowY[0] = 0; mkRowY[1] = 0;
+                mkEnvY = 0; mkTimbreY = 0; mkTessY = 0;
+
+                // Sélecteur d'instrument (hWaveCombo repositionné ici)
+                MoveWindow(hWaveCombo, mkX, y, mkW, 200, TRUE);
+                ShowWindow(hWaveCombo, SW_SHOW);
+                y += 32;
+
+                // ---- 5-column knob grid for SF2 delta parameters ----
+                // Col 0: ACCORD.  (Coarse, Fine, Scale)
+                // Col 1: ENV VOL  (Delay, Atk, Hold, Dec, Sus, Rel)
+                // Col 2: ENV MOD  (Delay, Atk, Hold, Dec, Sus, Rel, →Pitch, →Filt)
+                // Col 3: LFO      (ModDly, ModFq, Mod→Pitch, Mod→Filt, Mod→Vol, VibDly, VibFq, Vib→Pitch)
+                // Col 4: DYN+FX   (Vol, Pan, FiltFc, FiltQ, Reverb, Chorus)
+                const int dCols   = 5;
+                const int dColW   = mkW / dCols;
+                // dRowH = label(16) + knob(56) + val(18) + gap(8) = 98
+                const int dRowH   = 16 + kKnobSize + 18 + 8;
+
+                auto placeDK = [&](int col, int row, HWND kn, HWND vl) {
+                    int kx = mkX + col * dColW + (dColW - kKnobSize) / 2;
+                    int ky = y + 26 + row * dRowH + 16;
+                    if (kn) { MoveWindow(kn, kx, ky, kKnobSize, kKnobSize, TRUE); ShowWindow(kn, SW_SHOW); }
+                    if (vl) { MoveWindow(vl, kx, ky + kKnobSize + 2, kKnobSize, 16, TRUE); ShowWindow(vl, SW_SHOW); }
                 };
-                placeDelta(hMakerDeltaTuneSlider, hMakerDeltaTuneVal);
-                placeDelta(hMakerDeltaAtkSlider,  hMakerDeltaAtkVal);
-                placeDelta(hMakerDeltaDecSlider,  hMakerDeltaDecVal);
-                placeDelta(hMakerDeltaSusSlider,  hMakerDeltaSusVal);
-                placeDelta(hMakerDeltaRelSlider,  hMakerDeltaRelVal);
-                placeDelta(hMakerDeltaVolSlider,  hMakerDeltaVolVal);
-                placeDelta(hMakerDeltaFiltSlider, hMakerDeltaFiltVal);
-                ShowWindow(hMakerClearSf2Btn, SW_SHOW);
+
+                mkDeltaAccordY = y;
+                mkDeltaEnvY    = y;
+                mkDeltaDynY    = y;
+                mkDeltaFxY     = y;
+                mkDeltaFiltY   = 0;
+
+                // Col 0: ACCORD.
+                placeDK(0, 0, hMakerDeltaTuneSlider,    hMakerDeltaTuneVal);
+                placeDK(0, 1, hMakerDeltaFineTuneSlider, hMakerDeltaFineTuneVal);
+                placeDK(0, 2, hMakerDeltaScaleSlider,   hMakerDeltaScaleVal);
+                // Col 1: ENV VOL
+                placeDK(1, 0, hMakerDeltaDelayVolSlider, hMakerDeltaDelayVolVal);
+                placeDK(1, 1, hMakerDeltaAtkSlider,     hMakerDeltaAtkVal);
+                placeDK(1, 2, hMakerDeltaHoldVolSlider, hMakerDeltaHoldVolVal);
+                placeDK(1, 3, hMakerDeltaDecSlider,     hMakerDeltaDecVal);
+                placeDK(1, 4, hMakerDeltaSusSlider,     hMakerDeltaSusVal);
+                placeDK(1, 5, hMakerDeltaRelSlider,     hMakerDeltaRelVal);
+                // Col 2: ENV MOD
+                placeDK(2, 0, hMakerDeltaDelayModSlider,  hMakerDeltaDelayModVal);
+                placeDK(2, 1, hMakerDeltaAtkModSlider,    hMakerDeltaAtkModVal);
+                placeDK(2, 2, hMakerDeltaHoldModSlider,   hMakerDeltaHoldModVal);
+                placeDK(2, 3, hMakerDeltaDecModSlider,    hMakerDeltaDecModVal);
+                placeDK(2, 4, hMakerDeltaSusModSlider,    hMakerDeltaSusModVal);
+                placeDK(2, 5, hMakerDeltaRelModSlider,    hMakerDeltaRelModVal);
+                placeDK(2, 6, hMakerDeltaModEnvPitchSlider, hMakerDeltaModEnvPitchVal);
+                placeDK(2, 7, hMakerDeltaModEnvFiltSlider,  hMakerDeltaModEnvFiltVal);
+                // Col 3: LFO
+                placeDK(3, 0, hMakerDeltaModLfoDlySlider,   hMakerDeltaModLfoDlyVal);
+                placeDK(3, 1, hMakerDeltaModLfoFqSlider,    hMakerDeltaModLfoFqVal);
+                placeDK(3, 2, hMakerDeltaModLfoPitchSlider, hMakerDeltaModLfoPitchVal);
+                placeDK(3, 3, hMakerDeltaModLfoFiltSlider,  hMakerDeltaModLfoFiltVal);
+                placeDK(3, 4, hMakerDeltaModLfoVolSlider,   hMakerDeltaModLfoVolVal);
+                placeDK(3, 5, hMakerDeltaVibLfoDlySlider,   hMakerDeltaVibLfoDlyVal);
+                placeDK(3, 6, hMakerDeltaVibLfoFqSlider,    hMakerDeltaVibLfoFqVal);
+                placeDK(3, 7, hMakerDeltaVibLfoPitchSlider, hMakerDeltaVibLfoPitchVal);
+                // Col 4: DYN+FX
+                placeDK(4, 0, hMakerDeltaVolSlider,    hMakerDeltaVolVal);
+                placeDK(4, 1, hMakerDeltaPanSlider,    hMakerDeltaPanVal);
+                placeDK(4, 2, hMakerDeltaFiltSlider,   hMakerDeltaFiltVal);
+                placeDK(4, 3, hMakerDeltaQSlider,      hMakerDeltaQVal);
+                placeDK(4, 4, hMakerDeltaReverbSlider, hMakerDeltaReverbVal);
+                placeDK(4, 5, hMakerDeltaChorusSlider, hMakerDeltaChorusVal);
+
+                y += 26 + 8 * dRowH + 10; // 8 rows max (col 2 and 3)
+
             } else {
+                // Pas de SF2 externe — section synthèse procédurale
                 showExternalSf2Controls(false);
+                mkDeltaAccordY = 0; mkDeltaEnvY = 0; mkDeltaDynY = 0; mkDeltaFiltY = 0; mkDeltaFxY = 0;
+
+                y += 8; // marge avant la section synthèse
+
+                // ---- Nom du preset ----
+                mkRowY[0] = y;
+                if (hMakerNameEdit) {
+                    MoveWindow(hMakerNameEdit, mkX + mkLblW + 8, y, mkSldW, 22, TRUE);
+                    ShowWindow(hMakerNameEdit, SW_SHOW);
+                }
+                y += mkRowH;
+
+                // ---- Type de synthèse ----
+                mkRowY[1] = y;
+                if (hMakerSynthCombo) {
+                    MoveWindow(hMakerSynthCombo, mkX + mkLblW + 8, y, 280, 24, TRUE);
+                    ShowWindow(hMakerSynthCombo, SW_SHOW);
+                }
+                y += mkRowH + 4;
+
+                // ---- ENVELOPPE + TIMBRE (knobs côte à côte) ----
+                mkEnvY    = y;
+                mkTimbreY = y;
+                y += 24;
+
+                const int halfW   = kViewWidth / 2 - kPadX;
+                const int halfMid = kViewWidth / 2;
+                const int envGap  = (halfW - 4 * kKnobSize) / 5;
+                const int tmbGap  = (halfW - 3 * kKnobSize) / 4;
+                int knobY = y;
+                int valLY = knobY + kKnobSize + 2;
+
+                {
+                    int kx = kPadX + envGap;
+                    auto placeKnob = [&](HWND k, HWND v) {
+                        if (k) { MoveWindow(k, kx, knobY, kKnobSize, kKnobSize, TRUE); ShowWindow(k, SW_SHOW); }
+                        if (v) { MoveWindow(v, kx, valLY, kKnobSize, 16, TRUE);        ShowWindow(v, SW_SHOW); }
+                        kx += kKnobSize + envGap;
+                    };
+                    mkRowY[2] = knobY; placeKnob(hMakerAttackSlider,  hMakerAttackVal);
+                    mkRowY[3] = knobY; placeKnob(hMakerDecaySlider,   hMakerDecayVal);
+                    mkRowY[4] = knobY; placeKnob(hMakerSustainSlider, hMakerSustainVal);
+                    mkRowY[5] = knobY; placeKnob(hMakerReleaseSlider, hMakerReleaseVal);
+                }
+                {
+                    int kx = halfMid + tmbGap;
+                    auto placeKnob = [&](HWND k, HWND v) {
+                        if (k) { MoveWindow(k, kx, knobY, kKnobSize, kKnobSize, TRUE); ShowWindow(k, SW_SHOW); }
+                        if (v) { MoveWindow(v, kx, valLY, kKnobSize, 16, TRUE);        ShowWindow(v, SW_SHOW); }
+                        kx += kKnobSize + tmbGap;
+                    };
+                    mkRowY[6] = knobY; placeKnob(hMakerModIndexSlider, hMakerModIndexVal);
+                    mkRowY[7] = knobY; placeKnob(hMakerModDecaySlider, hMakerModDecayVal);
+                    mkRowY[8] = knobY; placeKnob(hMakerGainSlider,     hMakerGainVal);
+                }
+
+                y = valLY + 18 + 10;
+
+                // ---- TESSITURE ----
+                mkTessY = y;
+                y += 22;
+                mkRowY[9] = y;
+                {
+                    const int cmbW  = 130;
+                    const int cmbW2 = 190;
+                    const int gap   = 20;
+                    const int lblW2 = 90;
+                    int cx = mkX + mkLblW + 8;
+                    if (hMakerLowNoteCombo) {
+                        MoveWindow(hMakerLowNoteCombo, cx, y, cmbW, 24, TRUE);
+                        ShowWindow(hMakerLowNoteCombo, SW_SHOW);
+                    }
+                    cx += cmbW + gap + lblW2 + 4;
+                    if (hMakerHighNoteCombo) {
+                        MoveWindow(hMakerHighNoteCombo, cx, y, cmbW, 24, TRUE);
+                        ShowWindow(hMakerHighNoteCombo, SW_SHOW);
+                    }
+                    cx += cmbW + gap + lblW2 + 4;
+                    if (hMakerStepCombo) {
+                        MoveWindow(hMakerStepCombo, cx, y, cmbW2, 24, TRUE);
+                        ShowWindow(hMakerStepCombo, SW_SHOW);
+                    }
+                }
+                y += mkRowH + 10;
+
+                // ---- GÉNÉRER button ----
+                if (hMakerGenerateBtn) {
+                    MoveWindow(hMakerGenerateBtn, mkX, y, 200, 36, TRUE);
+                    ShowWindow(hMakerGenerateBtn, SW_SHOW);
+                }
+                y += 44;
+            }
+            // --- Scrollbar vertical pour les delta SF2 ---
+            {
+                const int visH     = kViewHeight - (kHeaderH + kTabsH);
+                const int contentH = (y + makerScrollY) - (kHeaderH + kTabsH);
+                bool needScroll = contentH > visH;
+                if (hMakerScrollBar) {
+                    MoveWindow(hMakerScrollBar, kViewWidth - 16, kHeaderH + kTabsH,
+                               16, visH, TRUE);
+                    if (needScroll) {
+                        SCROLLINFO si{}; si.cbSize = sizeof(si);
+                        si.fMask = SIF_RANGE | SIF_PAGE | SIF_POS;
+                        si.nMin  = 0;
+                        si.nMax  = contentH - 1;
+                        si.nPage = (UINT)visH;
+                        si.nPos  = makerScrollY;
+                        SetScrollInfo(hMakerScrollBar, SB_CTL, &si, TRUE);
+                        ShowWindow(hMakerScrollBar, SW_SHOW);
+                    } else {
+                        makerScrollY = 0;
+                        ShowWindow(hMakerScrollBar, SW_HIDE);
+                    }
+                }
             }
             refreshDeltaLabels();
 
@@ -3155,62 +3911,94 @@ private:
             if (hRedoBtn)      ShowWindow(hRedoBtn,      SW_HIDE);
             for (int i = 0; i < 4; ++i) { sectionY[i] = 0; sectionX[i] = 0; sectionW[i] = 0; }
 
-            // Layout: 2 columns, 2 FX each.
-            //   Left:  Chorus (col 0) + Delay (col 0)
-            //   Right: Reverb (col 1) + CassetteNoise (col 1)
-            const int colW  = (kViewWidth - 2 * kPadX - 20) / 2; // ~420 px each
+            // Layout: 2 columns (Chorus+Delay left, Reverb+Noise right)
+            // Each FX block: title+toggle row, then 3 knobs horizontal, then val labels
+            const int colW  = (kViewWidth - 2 * kPadX - 20) / 2; // ~422 px each
             const int col0X = kPadX;
             const int col1X = kPadX + colW + 20;
-            const int lblW  = 120;
-            const int sldW  = 200;
-            const int valW  = 66;
-            const int rowH  = 30;
-            const int secH  = 24; // section title row height
             const int togW  = 90;
+            const int secH  = 28; // title row height
+            // 3 knobs per FX, evenly spaced in column
+            const int knobGapFx = (colW - 3 * kKnobSize) / 4; // ~(422-168)/4=63
+            const int fxKnobH   = kKnobSize;                   // 56
+            const int fxValH    = 18;
+            const int fxSecGap  = 18; // gap between two FX in same column
 
-            auto placeRow = [&](int colX, int y, HWND sld, HWND val) {
-                if (sld) { MoveWindow(sld, colX + lblW + 4, y + 4, sldW, 22, TRUE); ShowWindow(sld, SW_SHOW); }
-                if (val) { MoveWindow(val, colX + lblW + 4 + sldW + 4, y + 6, valW, 18, TRUE); ShowWindow(val, SW_SHOW); }
+            // Helper: place 3 knobs + val labels in a column, starting at knobY
+            auto placeFxKnobs = [&](int colX, int knobY,
+                HWND k0, HWND v0, HWND k1, HWND v1, HWND k2, HWND v2) {
+                int kx = colX + knobGapFx;
+                int ky = knobY;
+                int vy = ky + fxKnobH + 2;
+                if (k0) { MoveWindow(k0, kx, ky, kKnobSize, kKnobSize, TRUE); ShowWindow(k0, SW_SHOW); }
+                if (v0) { MoveWindow(v0, kx, vy, kKnobSize, fxValH, TRUE);    ShowWindow(v0, SW_SHOW); }
+                kx += kKnobSize + knobGapFx;
+                if (k1) { MoveWindow(k1, kx, ky, kKnobSize, kKnobSize, TRUE); ShowWindow(k1, SW_SHOW); }
+                if (v1) { MoveWindow(v1, kx, vy, kKnobSize, fxValH, TRUE);    ShowWindow(v1, SW_SHOW); }
+                kx += kKnobSize + knobGapFx;
+                if (k2) { MoveWindow(k2, kx, ky, kKnobSize, kKnobSize, TRUE); ShowWindow(k2, SW_SHOW); }
+                if (v2) { MoveWindow(v2, kx, vy, kKnobSize, fxValH, TRUE);    ShowWindow(v2, SW_SHOW); }
             };
             auto placeTog = [&](int colX, int y, HWND tog) {
-                if (tog) { MoveWindow(tog, colX + lblW + 4, y, togW, 24, TRUE); ShowWindow(tog, SW_SHOW); }
+                if (tog) {
+                    // Center the toggle in its column
+                    int tx = colX + (colW - togW) / 2;
+                    MoveWindow(tog, tx, y + 2, togW, 24, TRUE);
+                    ShowWindow(tog, SW_SHOW);
+                }
             };
 
-            int startY = kHeaderH + kTabsH + 14;
+            const int startY = kHeaderH + kTabsH + 14;
+            // Height of one FX block: secH + kKnobSize + fxValH + margin
+            const int fxBlockH = secH + fxKnobH + fxValH + 4;
 
-            // ---- CHORUS ----
+            // ---- CHORUS (col 0) ----
             fxChorusY = startY;
-            int y = startY + secH;
-            fxRowY[0] = y; placeRow(col0X, y, hFxChorusRate,  hFxChorusRateVal);  y += rowH;
-            fxRowY[1] = y; placeRow(col0X, y, hFxChorusDepth, hFxChorusDepthVal); y += rowH;
-            fxRowY[2] = y; placeRow(col0X, y, hFxChorusMix,   hFxChorusMixVal);   y += rowH;
-            placeTog(col0X, fxChorusY + 2, hFxChorusOn);
+            placeTog(col0X, fxChorusY, hFxChorusOn);
+            {
+                int knobY = fxChorusY + secH;
+                fxRowY[0] = knobY; fxRowY[1] = knobY; fxRowY[2] = knobY; // same row for paint
+                placeFxKnobs(col0X, knobY,
+                    hFxChorusRate, hFxChorusRateVal,
+                    hFxChorusDepth, hFxChorusDepthVal,
+                    hFxChorusMix, hFxChorusMixVal);
+            }
 
-            // ---- DELAY ----
-            y += 10;
-            fxDelayY = y;
-            y += secH;
-            fxRowY[3] = y; placeRow(col0X, y, hFxDelayTime, hFxDelayTimeVal); y += rowH;
-            fxRowY[4] = y; placeRow(col0X, y, hFxDelayFb,   hFxDelayFbVal);   y += rowH;
-            fxRowY[5] = y; placeRow(col0X, y, hFxDelayMix,  hFxDelayMixVal);  y += rowH;
-            placeTog(col0X, fxDelayY + 2, hFxDelayOn);
+            // ---- DELAY (col 0, below Chorus) ----
+            fxDelayY = startY + fxBlockH + fxSecGap;
+            placeTog(col0X, fxDelayY, hFxDelayOn);
+            {
+                int knobY = fxDelayY + secH;
+                fxRowY[3] = knobY; fxRowY[4] = knobY; fxRowY[5] = knobY;
+                placeFxKnobs(col0X, knobY,
+                    hFxDelayTime, hFxDelayTimeVal,
+                    hFxDelayFb,   hFxDelayFbVal,
+                    hFxDelayMix,  hFxDelayMixVal);
+            }
 
-            // ---- REVERB (right column) ----
+            // ---- REVERB (col 1) ----
             fxReverbY = startY;
-            y = startY + secH;
-            fxRowY[6] = y; placeRow(col1X, y, hFxReverbSize, hFxReverbSizeVal); y += rowH;
-            fxRowY[7] = y; placeRow(col1X, y, hFxReverbDamp, hFxReverbDampVal); y += rowH;
-            fxRowY[8] = y; placeRow(col1X, y, hFxReverbMix,  hFxReverbMixVal);  y += rowH;
-            placeTog(col1X, fxReverbY + 2, hFxReverbOn);
+            placeTog(col1X, fxReverbY, hFxReverbOn);
+            {
+                int knobY = fxReverbY + secH;
+                fxRowY[6] = knobY; fxRowY[7] = knobY; fxRowY[8] = knobY;
+                placeFxKnobs(col1X, knobY,
+                    hFxReverbSize, hFxReverbSizeVal,
+                    hFxReverbDamp, hFxReverbDampVal,
+                    hFxReverbMix,  hFxReverbMixVal);
+            }
 
-            // ---- CASSETTE NOISE (right column) ----
-            y += 10;
-            fxNoiseY = y;
-            y += secH;
-            fxRowY[9]  = y; placeRow(col1X, y, hFxNoiseLevel,   hFxNoiseLevelVal);   y += rowH;
-            fxRowY[10] = y; placeRow(col1X, y, hFxNoiseFlutter, hFxNoiseFlutterVal); y += rowH;
-            fxRowY[11] = y; placeRow(col1X, y, hFxNoiseTone,    hFxNoiseToneVal);    y += rowH;
-            placeTog(col1X, fxNoiseY + 2, hFxNoiseOn);
+            // ---- CASSETTE NOISE (col 1, below Reverb) ----
+            fxNoiseY = startY + fxBlockH + fxSecGap;
+            placeTog(col1X, fxNoiseY, hFxNoiseOn);
+            {
+                int knobY = fxNoiseY + secH;
+                fxRowY[9] = knobY; fxRowY[10] = knobY; fxRowY[11] = knobY;
+                placeFxKnobs(col1X, knobY,
+                    hFxNoiseLevel,   hFxNoiseLevelVal,
+                    hFxNoiseFlutter, hFxNoiseFlutterVal,
+                    hFxNoiseTone,    hFxNoiseToneVal);
+            }
 
             refreshFxFromParams(style);
             InvalidateRect(hWnd, nullptr, TRUE);
@@ -3228,6 +4016,8 @@ private:
                        (kHeaderH - btnH) / 2, btnW, btnH, TRUE);
             ShowWindow(hAutoBtn, SW_SHOW);
         }
+        // Own-SF2 button is only shown in the Maker tab
+        if (hOwnSf2Btn) ShowWindow(hOwnSf2Btn, SW_HIDE);
 
         // Y where the PARAMÈTRES header ends (drawn at kHeaderH+kTabsH+4, height 22)
         static constexpr int kParamHdrH = 22;
@@ -3509,14 +4299,43 @@ private:
         if (!hWaveCombo) return;
         style = std::clamp(style, 0, 5);
         SendMessageW(hWaveCombo, CB_RESETCONTENT, 0, 0);
-        const int n = plugin->effectivePresetCount(style);
-        for (int i = 0; i < n; ++i) {
-            SfPreset p = plugin->effectivePreset(style, i);
-            if (!p.name || !*p.name) continue;
-            SendMessageW(hWaveCombo, CB_ADDSTRING, 0, (LPARAM)p.name);
+
+        if (plugin && !plugin->externalSf2PerStyle[style].empty()) {
+            // SF2 externe chargé : utiliser tsfPresetsPerStyle[], snapshot peuplé par
+            // reloadExternalSf() directement depuis f->presets[] de TSF.
+            // sfed::listPresets() re-parsait le PHDR brut — peut rater sur certains SF2
+            // que TSF charge pourtant sans problème (bibliothèque battle-tested).
+            // L'index dans ce snapshot == l'index dans le combo == l'index dans TSF.
+            const auto& presets = plugin->tsfPresetsPerStyle[style];
+            int selIdx = 0;
+            for (int i = 0; i < (int)presets.size(); ++i) {
+                wchar_t wname[32] = {};
+                if (presets[i].name[0])
+                    MultiByteToWideChar(CP_UTF8, 0, presets[i].name, -1, wname, 31);
+                if (!wname[0])
+                    swprintf_s(wname, 32, L"Prst %d:%d",
+                        presets[i].bank, presets[i].program);
+                SendMessageW(hWaveCombo, CB_ADDSTRING, 0, (LPARAM)wname);
+                if ((uint16_t)presets[i].bank    == plugin->sf2SelBankPerStyle[style] &&
+                    (uint16_t)presets[i].program == plugin->sf2SelProgPerStyle[style])
+                    selIdx = i;
+            }
+            if (!presets.empty())
+                SendMessageW(hWaveCombo, CB_SETCURSEL, selIdx, 0);
+            // Si presets vide : reloadExternalSf pas encore appelé (cas de chargement de preset sauvegardé)
+            return;
         }
-        int idx = std::clamp(plugin->sfPresetIdxPerStyle[style], 0, std::max(1, n) - 1);
-        SendMessageW(hWaveCombo, CB_SETCURSEL, idx, 0);
+        // Catalogue statique (pas de SF2 externe)
+        {
+            const int n = plugin->effectivePresetCount(style);
+            for (int i = 0; i < n; ++i) {
+                SfPreset p = plugin->effectivePreset(style, i);
+                if (!p.name || !*p.name) continue;
+                SendMessageW(hWaveCombo, CB_ADDSTRING, 0, (LPARAM)p.name);
+            }
+            int idx = std::clamp(plugin->sfPresetIdxPerStyle[style], 0, std::max(1, n) - 1);
+            SendMessageW(hWaveCombo, CB_SETCURSEL, idx, 0);
+        }
     }
 
     void refreshVolValue() {

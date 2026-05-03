@@ -1362,21 +1362,43 @@ private:
     std::vector<uint8_t> externalSf2PerStyle[6];
     std::wstring         externalSf2PathPerStyle[6]; // chemin affiché dans l'UI
     sfed::Sf2Delta       sf2DeltaPerStyle[6];        // delta par style
+    sfed::Sf2GenSnapshot sf2BaseGensPerStyle[6];     // valeurs absolues du preset chargé (pour labels)
+    uint16_t sf2SelBankPerStyle[6]    = {};          // banque MIDI du preset sélectionné dans le combo
+    uint16_t sf2SelProgPerStyle[6]    = {};          // programme MIDI du preset sélectionné dans le combo
+    // Liste de presets extraite de TSF après chaque reloadExternalSf.
+    // Accessible depuis l'UI thread sans lock (reloadExternalSf n'est jamais appelé depuis l'audio).
+    // Garanti cohérent avec ce que TSF joue réellement, contrairement à sfed::listPresets.
+    std::vector<sfed::Sf2Preset> tsfPresetsPerStyle[6];
 
     // Recharge le synth depuis un SF2 externe (déjà chargé dans externalSf2PerStyle[style])
     // en appliquant le delta courant. Retourne true en cas de succès.
     bool reloadExternalSf(int style) {
         if (style < 0 || style >= 6) return false;
         if (externalSf2PerStyle[style].empty()) return false;
-        // Copier les bytes bruts, appliquer le delta, charger
         std::vector<uint8_t> bytes = externalSf2PerStyle[style];
-        sfed::applyDelta(bytes, sf2DeltaPerStyle[style]);
+        uint16_t bank = sf2SelBankPerStyle[style];
+        uint16_t prog = sf2SelProgPerStyle[style];
+        // N'applique le patch SF2 que si au moins un paramètre delta est non-nul.
+        // Quand delta = 0, on charge le fichier original tel quel — plus rapide et
+        // évite tout risque de corruption pour un simple changement de preset.
+        if (!sfed::sf2DeltaIsZero(sf2DeltaPerStyle[style])) {
+            bool patched = sfed::applyDeltaTargeted(bytes, sf2DeltaPerStyle[style], bank, prog);
+            if (!patched) {
+                // Fallback: patch tous les générateurs (edge-case)
+                sfed::applyDelta(bytes, sf2DeltaPerStyle[style]);
+            }
+        }
         tsf* newSynth = tsf_load_memory(bytes.data(), (int)bytes.size());
         if (!newSynth) return false;
         tsf_set_output(newSynth, TSF_STEREO_INTERLEAVED, (int)sampleRate, -3.0f);
         tsf_set_max_voices(newSynth, 48);
         int ch = kSfChannelOf(style);
-        tsf_channel_set_presetnumber(newSynth, ch, 0, 0);
+        // tsf_channel_set_bank_preset gère correctement n'importe quelle banque MIDI.
+        // Pour les percussions (bank 128), TSF utilise la banque GM drums.
+        if (!tsf_channel_set_bank_preset(newSynth, ch, (bank == 128 ? 128 : bank), prog)) {
+            // Si le preset n'est pas trouvé dans cette banque, repli sur prog/bank 0
+            tsf_channel_set_presetnumber(newSynth, ch, prog, bank == 128 ? 1 : 0);
+        }
         tsf_channel_set_volume(newSynth, ch, sfVolumePerStyle[style]);
         tsf* oldSynth = nullptr;
         {
@@ -1388,10 +1410,21 @@ private:
             sfSynth[style] = newSynth;
         }
         if (oldSynth) tsf_close(oldSynth);
+        // Snapshot de la liste de presets TSF : index stable = même ordre que le combo UI.
+        // Utilise l'API publique (tsf_get_presetbank / tsf_get_presetprog) pour ne pas
+        // dépendre de la définition complète de struct tsf dans les TU sans TSF_IMPLEMENTATION.
+        tsfPresetsPerStyle[style].clear();
+        int pCount = tsf_get_presetcount(newSynth);
+        for (int i = 0; i < pCount; ++i) {
+            sfed::Sf2Preset p{};
+            const char* nm = tsf_get_presetname(newSynth, i);
+            if (nm) { std::strncpy(p.name, nm, 20); p.name[20] = '\0'; }
+            p.bank    = (uint16_t)tsf_get_presetbank(newSynth, i);
+            p.program = (uint16_t)tsf_get_presetprog(newSynth, i);
+            tsfPresetsPerStyle[style].push_back(p);
+        }
         return true;
     }
-
-    // Generate an SF2 in memory from `cfg` and hot-swap sfSynth[style].
     // Safe to call from the UI thread. Acquires sfMutex only for the pointer swap.
     // Returns true on success.
     bool reloadLiveSf(int style, const sfm::SfmConfig& cfg) {
@@ -2302,6 +2335,11 @@ private:
 
     void renderVoices(AudioBusBuffers* outBuses, int32 numOutputs, uint32_t nframes) {
         if (!outBuses || numOutputs < 1) return;
+        MM_LOG_EVERY(200, "renderVoices: numOutputs=%d nframes=%u", numOutputs, nframes);
+        for (int bi = 0; bi < numOutputs; ++bi) {
+            MM_LOG_EVERY(200, "  bus[%d]: numChannels=%d bufPtr=%p", bi, outBuses[bi].numChannels,
+                (void*)(outBuses[bi].channelBuffers32 ? outBuses[bi].channelBuffers32[0] : nullptr));
+        }
         AudioBusBuffers& bus = outBuses[0];
         if (!bus.channelBuffers32) return;
         float* L = bus.numChannels > 0 ? bus.channelBuffers32[0] : nullptr;
@@ -2318,7 +2356,7 @@ private:
                     if (!sfSynth[st]) continue;
                     int busIdx = (st < numOutputs) ? st : 0;
                     AudioBusBuffers& sBus = outBuses[busIdx];
-                    if (!sBus.channelBuffers32) continue;
+                    if (!sBus.channelBuffers32) { MM_LOG_ONCE("bus[%d] channelBuffers32=null for style %d", busIdx, st); continue; }
                     float* sL = sBus.numChannels > 0 ? sBus.channelBuffers32[0] : nullptr;
                     float* sR = sBus.numChannels > 1 ? sBus.channelBuffers32[1] : sL;
                     if (!sL) continue;

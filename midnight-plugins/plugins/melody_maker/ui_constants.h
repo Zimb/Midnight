@@ -52,13 +52,40 @@ static constexpr int kIdMakerName      = 1044; // Edit: nom du preset
 // Éditeur SF2 externe
 static constexpr int kIdMakerLoadSf2   = 1045; // Bouton: Charger SF2...
 static constexpr int kIdMakerClearSf2  = 1046; // Bouton: ✕ Effacer SF2
-static constexpr int kIdMakerDeltaTune = 1047; // Slider: accordage (±24 demi-tons)
-static constexpr int kIdMakerDeltaAtk  = 1048; // Slider: attaque delta
-static constexpr int kIdMakerDeltaDec  = 1049; // Slider: déclin delta
-static constexpr int kIdMakerDeltaSus  = 1050; // Slider: sustain delta
-static constexpr int kIdMakerDeltaRel  = 1051; // Slider: relâche delta
-static constexpr int kIdMakerDeltaVol  = 1052; // Slider: volume delta
-static constexpr int kIdMakerDeltaFilt = 1053; // Slider: filtre cutoff delta
+static constexpr int kIdMakerDeltaTune    = 1047; // Slider: accordage (±24 demi-tons)
+static constexpr int kIdMakerDeltaAtk     = 1048; // Slider: attaque delta
+static constexpr int kIdMakerDeltaDec     = 1049; // Slider: déclin delta
+static constexpr int kIdMakerDeltaSus     = 1050; // Slider: sustain delta
+static constexpr int kIdMakerDeltaRel     = 1051; // Slider: relâche delta
+static constexpr int kIdMakerDeltaVol     = 1052; // Slider: volume delta
+static constexpr int kIdMakerDeltaFilt    = 1053; // Slider: filtre cutoff delta
+static constexpr int kIdMakerDeltaFineTune= 1066; // Slider: accordage fin ±99 cents
+static constexpr int kIdMakerDeltaPan     = 1067; // Slider: panoramique ±500
+static constexpr int kIdMakerDeltaQ       = 1068; // Slider: résonance filtre ±500 cb
+static constexpr int kIdMakerDeltaReverb  = 1069; // Slider: reverb SF2 send ±500
+static constexpr int kIdMakerDeltaChorus  = 1070; // Slider: chorus SF2 send ±500
+static constexpr int kIdRefresh           = 1071; // Refresh / regenerate button
+static constexpr int kIdOwnSf2Btn        = 1091; // Own-SF2 header toggle (navigates to Maker tab)
+// ---- Delta SF2 avancés (v2 Maker) ----
+static constexpr int kIdMakerDeltaScale      = 1072; // Accordage d'échelle
+static constexpr int kIdMakerDeltaDelayVol   = 1073; // Délai env volume
+static constexpr int kIdMakerDeltaHoldVol    = 1074; // Maintien env volume
+static constexpr int kIdMakerDeltaDelayMod   = 1075; // Délai env mod
+static constexpr int kIdMakerDeltaAtkMod     = 1076; // Attaque env mod
+static constexpr int kIdMakerDeltaHoldMod    = 1077; // Maintien env mod
+static constexpr int kIdMakerDeltaDecMod     = 1078; // Déclin env mod
+static constexpr int kIdMakerDeltaSusMod     = 1079; // Sustain env mod
+static constexpr int kIdMakerDeltaRelMod     = 1080; // Relâche env mod
+static constexpr int kIdMakerDeltaModEnvPitch= 1081; // Env mod → pitch
+static constexpr int kIdMakerDeltaModEnvFilt = 1082; // Env mod → filtre
+static constexpr int kIdMakerDeltaModLfoDly  = 1083; // Délai LFO mod
+static constexpr int kIdMakerDeltaModLfoFq   = 1084; // Fréq LFO mod
+static constexpr int kIdMakerDeltaModLfoPitch= 1085; // LFO mod → pitch
+static constexpr int kIdMakerDeltaModLfoFilt = 1086; // LFO mod → filtre
+static constexpr int kIdMakerDeltaModLfoVol  = 1087; // LFO mod → volume (tremolo)
+static constexpr int kIdMakerDeltaVibLfoDly  = 1088; // Délai vibrato
+static constexpr int kIdMakerDeltaVibLfoFq   = 1089; // Fréq vibrato
+static constexpr int kIdMakerDeltaVibLfoPitch= 1090; // Vibrato → pitch
 
 // Per-style Maker defaults and slider ranges.
 // Slider units: attack/decay/sustain/release = pos*0.01, modIndex/modDecay = pos*0.1, gain = pos*0.01

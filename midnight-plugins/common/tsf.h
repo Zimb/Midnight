@@ -113,6 +113,12 @@ TSFDEF const char* tsf_get_presetname(const tsf* f, int preset_index);
 // Returns the name of a preset by bank and preset number
 TSFDEF const char* tsf_bank_get_presetname(const tsf* f, int bank, int preset_number);
 
+// Returns the MIDI bank number of a preset at a given index (0-based)
+TSFDEF int tsf_get_presetbank(const tsf* f, int preset_index);
+
+// Returns the MIDI program number of a preset at a given index (0-based)
+TSFDEF int tsf_get_presetprog(const tsf* f, int preset_index);
+
 // Supported output modes by the render methods
 enum TSFOutputMode
 {
@@ -1523,6 +1529,16 @@ TSFDEF const char* tsf_get_presetname(const tsf* f, int preset)
 TSFDEF const char* tsf_bank_get_presetname(const tsf* f, int bank, int preset_number)
 {
 	return tsf_get_presetname(f, tsf_get_presetindex(f, bank, preset_number));
+}
+
+TSFDEF int tsf_get_presetbank(const tsf* f, int preset_index)
+{
+	return (preset_index < 0 || preset_index >= f->presetNum ? -1 : (int)f->presets[preset_index].bank);
+}
+
+TSFDEF int tsf_get_presetprog(const tsf* f, int preset_index)
+{
+	return (preset_index < 0 || preset_index >= f->presetNum ? -1 : (int)f->presets[preset_index].preset);
 }
 
 TSFDEF void tsf_set_output(tsf* f, enum TSFOutputMode outputmode, int samplerate, float global_gain_db)
